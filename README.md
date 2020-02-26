@@ -1,2 +1,2 @@
 # Chromatin-Structure-in-SCNT
-The R and bash script of the main analysis in SCNT 3D genome project
+Main scripts and code execution records for data analysis in SCNT 3D genome project.
