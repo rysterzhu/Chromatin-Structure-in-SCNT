@@ -1,0 +1,467 @@
+---
+title: "RTI_change-analysis"
+author: "zhu"
+date: "2018/11/6"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("~/R/library.R")
+k9dir="~/workspace/8.NT-HiC/g.DI_ALL/g.delta_RTI/3.K9me3_in_TAD"
+```
+
+```{r read}
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/a.Consolidation_analysis/6.NF_20180803/1.NF"
+odir="~/workspace/8.NT-HiC/g.DI_ALL/i.RTI_change_analysis"
+nt=c("CC","A-1h","A-6h", "A-12h","NT-e2cell", "NT-l2cell",  "NT-4cell", "NT-8cell", "NT-ICM")
+nf=c("Sperm", "MII-oocyte", "PN3-zygote", "PN5-zygote", "NF-e2cell", "NF-l2cell", "NF-4cell", "NF-8cell", "NF-ICM")
+flist = c(list.files(wdir,pattern = "_RTI.txt",full.names = T))
+nlist = str_split_fixed(flist,"/|_",n=20)[,13]
+nlist
+
+data = read.table(flist[1],header = T,sep = "\t")
+colnames(data)[4] = nlist[1]
+
+for(i in 2:length(flist)){
+  temp = read.table(flist[i],header = T,sep = "\t")
+  colnames(temp)[4] = nlist[i]
+  data = merge(data ,temp)
+}
+#write.table(data,paste0(odir,"/all.RTI.bed"),col.names = F,row.names = F,quote = F,sep="\t")
+```
+
+```{r pheatmap}
+#pdata = data[,nt[-2]]
+
+pdata = data[,c(nt[c(-2,-7)],nf[c(-2:-1,-7)])] #%>% log2
+rownames(pdata) = rownames(data)
+pdata = pdata[pdata$`NF-ICM`>0,]  #filter 33
+
+min=1;max=4
+pdata[which(pdata>max,arr.ind = T)] = max
+pdata[which(pdata < min,arr.ind = T)] = min
+
+pdata = pdata[which(apply(pdata,1,function(x) !all(x<=min))),] #filter 9
+#pdata = pdata[which(apply(pdata,1,function(x) all(is.finite(x)))),]
+
+c=5
+km <- kmeans(pdata,centers = c,iter.max = 10000,nstart = 50)  #nstart >> 20, make the kmeans stable
+data.frame(rti=pdata$`NT-e2cell`,cluster=km$cluster) %>% 
+  aggregate(.~cluster,.,mean) %>% .[order(.[,2],decreasing = T),1] ->levs
+
+ann = data.frame(cluster=factor(km$cluster,levels = levs,labels = 1:c))
+#ann = ann0
+#col=c('#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a')#,
+
+#kmeans9 try scale
+pdata[order(ann$cluster,-rowMeans(pdata)),] %>% #t %>% scale %>% t %>% 
+pheatmap(.,cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+         color= colorRampPalette(c("black","yellow"))(2000),
+  #color= colorRampPalette(c("#377EB8","white","#E41A1C"))(200),
+      display_numbers =F, 
+      annotation_row = ann,#annotation_colors = list( cluster=col),
+        show_rownames = F,show_colnames = T,
+      height = 5, width = 3,#breaks = unique(c(seq(min,0,length.out = 1000),seq(0,max,length.out = 1001))),
+        filename =paste0(odir,"/heatmap_NT-NF-RTI_kmeans11.pdf"))
+
+
+
+test = data[rownames(ann[ann$cluster==3,,drop=F]),c("chr","start","end",nt,nf)]
+
+merge(data[,c("chr","start","end")],ann,by=0)[,-1] %>% 
+  write.table(paste0(odir,"/genes/cluster.bed"),col.names = F,row.names = F,sep = "\t",quote = F)
+
+fread(paste0(odir,"/genes/temp.tab")) %>% data.frame %>% 
+  group_by(V2) %>% mutate(id = row_number()) %>% spread(V2,V1) %>% 
+  .[,c(2:4)] %>% 
+  .[apply(.,1,function(x) any(!is.na(x))),] %>%
+  `colnames<-`(paste0("cluster",colnames(.))) %>% 
+  write.table(paste0(odir,"/genes/cluster.genes.txt"),col.names = T,row.names = F,sep = "\t",quote = F,na = "")
+  
+#cluster K9me3
+k9dir="~/workspace/8.NT-HiC/g.DI_ALL/g.delta_RTI/3.K9me3_in_TAD"
+fread(paste0(k9dir,"/ICM-CC.tab"),quote = "'") %>% data.frame %>% `colnames<-`(c("chr",colnames(.)[-1])) -> ICM.CC.tab
+merge(data[,c("chr","start","end")],ann,by=0)[,-1] %>% merge(ICM.CC.tab,by=c("chr","start","end"),all.x = T) -> temp
+temp$K9 = temp$cc_K9me3/temp$cc_input
+temp[,c("cluster","K9")] %>% ggplot() + geom_boxplot(aes(x=cluster,y=K9),outlier.colour = NA,fill="skyblue") + 
+  ylim(0,4) + 
+  theme_bw()
+ggsave(paste0(odir,"/boxplot_kmeans11-CC-K9.pdf"),width = 5.6,height = 4.2)
+temp$cluster = paste0("Cluster",temp$cluster)
+temp[,c("cluster","K9")] %>% 
+  write.tab(file = paste0(odir,"/boxplot_kmeans8-CC-K9.txt"),col.names = T) #for wilcox.test
+
+#NF K9
+fread(paste0(k9dir,"/ICM-NF.tab"),quote = "'") %>% data.frame(check.names = F) %>% `colnames<-`(c("chr",colnames(.)[-1])) -> ICM.NF.tab
+merge(data[,c("chr","start","end")],ann,by=0)[,-1] %>% merge(ICM.NF.tab,by=c("chr","start","end"),all.x = T) -> temp
+
+input = temp[,seq(5,dim(temp)[2],2)]
+treat = temp[,seq(6,dim(temp)[2],2)] %>% `colnames<-`(str_split_fixed(colnames(.),"_",n=2)[,1])
+treat = treat/input
+treat$cluster = temp$cluster
+ss=c("zygote", "2cell", "8cell", "ICM","E55Epi","E65Epi","E75Epi","E85Epi")
+
+aggregate(.~cluster,data=treat,mean) %>%
+melt(id.var="cluster",variable.name = "sample",value.name="K9me3") -> ggdata
+
+ggdata = ggdata[ggdata$sample %in% ss,]
+
+ggdata$sample = factor(ggdata$sample,levels=ss)  
+ggplot(ggdata,aes(x=sample,y=K9me3)) + geom_point(outlier.colour = NA,fill="skyblue") + 
+  geom_line(aes(group=cluster)) +
+  ylim(0.75,2.25) +  
+  facet_grid(rows = vars(cluster)) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45,hjust=1))
+
+
+ggsave(paste0(odir,"/lineplot_kmeans7-NF-K9-3.png"),width = 3.6,height = 8.4)
+
+#K9me3 heatmap
+fread(paste0(k9dir,"/ICM-NT.tab"),quote = "'") %>% data.frame(check.names = F) %>% `colnames<-`(c("chr",colnames(.)[-1])) -> ICM.NF.tab
+merge(data[,c("chr","start","end")],ann,by=0)[,-1] %>% merge(ICM.NF.tab,by=c("chr","start","end"),all.x = T) -> temp
+
+input = temp[,seq(5,dim(temp)[2],2)]
+treat = temp[,seq(6,dim(temp)[2],2)] %>% `colnames<-`(str_split_fixed(colnames(.),"_",n=2)[,1])
+treat = treat/input
+ss=c("zygote", "2cell", "8cell", "ICM")
+#ss=c("cc","6h","14h","2cell","8cell","icm")
+treat = treat[,ss] %>% log2 %>% #apply(2,function(x) (x-mean(x))/sd(x)) %>% #t %>% 
+  data.frame
+ann2 = data.frame(cluster=factor(temp$cluster))
+pheatmap(treat[order(ann2$cluster),],cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+         color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F, 
+      annotation_row = ann2,#annotation_colors = list( cluster=col),
+        show_rownames = F,show_colnames = T,
+      height = 10, width = 3,breaks = seq(-3,3,length.out = 200),
+        filename =paste0(odir,"/heatmap_kmeans7-NF-K9_log.png"))
+
+save.image(paste0(odir,"/heatmap.RData"))
+#CC K9me3 & RTI in cluster ann0
+fread(paste0(k9dir,"/ICM-NT.tab"),quote = "'") %>% data.frame(check.names = F) %>% `colnames<-`(c("chr",colnames(.)[-1])) -> ICM.NF.tab
+data[,c("chr","start","end","CC")] %>% merge(ann,by=0) %>% merge(ICM.NF.tab,by=c("chr","start","end"),all.x = T) -> temp
+data.frame(RTI=temp$CC,K9me3=temp$cc_K9me3/temp$cc_input) %>% log2 -> temp2
+temp2[which(temp2>3,arr.ind = T)] = 3
+temp2[which(temp2 < -3,arr.ind = T)] = -3
+ann2 = data.frame(cluster=factor(temp$cluster))
+pheatmap(temp2[order(ann2$cluster,-rowMeans(pdata)),],cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+         color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F, 
+      annotation_row = ann2,#annotation_colors = list( cluster=col),
+        show_rownames = F,show_colnames = T,
+      height = 10, width = 3,breaks = seq(-3,3,length.out = 200),
+  cellwidth = 30,cellheight=0.3,
+        filename =paste0(odir,"/heatmap_kmeans8-CC-K9-RTI.png"))
+temp3=pdata
+temp3$K9me3=temp2$K9me3
+pheatmap(temp3[order(ann$cluster,-rowMeans(pdata)),],cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+         color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F, 
+      annotation_row = ann,#annotation_colors = list( cluster=col),
+        show_rownames = F,show_colnames = T,
+      height = 10, width = 3,breaks = seq(-3,3,length.out = 200),
+        filename =paste0(odir,"/heatmap_NT-NF-RTI-K9_kmeans8.png"))
+
+```
+
+```{r}
+fread(paste0(odir,"/k9me3-icm-TAD.tab"),col.names = c("chr","start","end","K9-rep1","K9-rep2")) -> K9.tab
+K9.tab$K9 = rowMeans(K9.tab[,4:5])
+
+ggplot(K9.tab) + geom_density(aes(x=K9)) + xlim(0,5) 
+summary(K9.tab$K9)
+
+which(K9.tab$K9 > 1) %>% length
+
+K9.tab$flag = factor(ifelse(K9.tab$K9 >=1, "ON","OFF"))
+summary(K9.tab$flag)
+
+sele=c("CC","A-1h","A-6h", "A-12h","NT-e2cell")
+#sele=nt
+temp = merge(data,K9.tab[,c(1:3,7)],by=1:3)[,-3:-1] %>% melt(id.var="flag",variable.name = "sample",value.name="RTI")
+temp = temp[which(temp$sample %in% sele),]
+temp$sample = factor(temp$sample,levels = sele)
+ggplot(temp,aes(x=sample,y=RTI,fill=flag)) + geom_boxplot(outlier.shape = NA) + 
+  ylim(0,5) + 
+  theme_bw() + 
+  ggtitle("CC K9标记和没有标记的ICM的TAD在各个sample中的RTI") +
+  theme(axis.text.x = element_text(angle=45,hjust=1))
+ggsave(paste0(odir,"/CC-K9_ICM-TAD_RTI2.pdf"),width=5.6,height = 3.6)
+#CC和12h的很有意思
+```
+
+```{r CC K9标记和没有标记的CC的TAD在各个sample中的RTI}
+#用CC的TAD 
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/a.Consolidation_analysis/6.NF_20180803/2.CC"
+odir="~/workspace/8.NT-HiC/g.DI_ALL/i.RTI_change_analysis"
+nt=c("CC","A-1h","A-6h", "A-12h","NT-e2cell", "NT-l2cell",  "NT-4cell", "NT-8cell", "NT-ICM")
+nf=c("Sperm", "MII-oocyte", "PN3-zygote", "PN5-zygote", "NF-e2cell", "NF-l2cell", "NF-4cell", "NF-8cell", "NF-ICM")
+flist = c(list.files(wdir,pattern = "_CC_RTI.txt",full.names = T))
+nlist = str_split_fixed(flist,"/|_",n=20)[,13]
+nlist
+
+data = read.table(flist[1],header = T,sep = "\t")
+colnames(data)[4] = nlist[1]
+
+for(i in 2:length(flist)){
+  temp = read.table(flist[i],header = T,sep = "\t")
+  colnames(temp)[4] = nlist[i]
+  data = merge(data,temp)
+}
+write.table(data,paste0(odir,"/CC-TAD.RTI.bed"),col.names = T,row.names = F,quote = F,sep="\t")
+
+#fread(paste0(k9dir,"/cc-CC.tab"),quote = "'") %>% data.frame %>% `colnames<-`(c("chr",colnames(.)[-1])) -> K9.tab
+#K9.tab$K9 = K9.tab$cc_K9me3/K9.tab$cc_input
+
+# fread(paste0(odir,"/k9me3-CC-TAD.tab"),col.names = c("chr","start","end","K9-rep1","K9-rep2")) -> K9.tab #use multiBamSummary
+# K9.tab$K9 = rowMeans(K9.tab[,4:5])
+fread(paste0(odir,"/k9me3-CC-TAD.tab"),quote = "'") %>% data.frame -> K9.tab
+K9.tab$K9 = K9.tab$cc_K9me3/K9.tab$cc_input
+
+#K9.tab$pvalue = apply(K9.tab[,-3:-1],1,function(x) wilcox.test(x[c(2,4)],x[c(1,3)],alternative = "greater")$p.value)
+
+
+ggplot(K9.tab) + geom_density(aes(x=K9)) + xlim(0,5) 
+summary(K9.tab$K9)
+
+which(K9.tab$K9 > 1) %>% length
+
+K9.tab$flag = factor(ifelse(K9.tab$K9 >=1, "ON","OFF")) 
+summary(K9.tab$flag)
+
+sele=c("CC","A-1h","A-6h", "A-12h","NT-e2cell")
+#sele=nt
+temp = merge(data[,c("chr","start","end",nt)],K9.tab[,c(1:3,11)],by=1:3)[,-3:-1] %>% melt(id.var="flag",variable.name = "sample",value.name="RTI")
+temp = temp[which(temp$sample %in% sele),]
+temp$sample = factor(temp$sample,levels = sele)
+
+ggplot(temp,aes(x=sample,y=RTI,fill=flag)) + geom_boxplot(outlier.shape = NA) + 
+  ylim(0,6) + 
+  theme_bw() + 
+  ggtitle("the RTI of each sample marked by CC-K9me3 in CC-TAD") +
+  labs(fill="K9me3 mark") +
+  theme(axis.text.x = element_text(angle=45,hjust=1))
+ggsave(paste0(odir,"/CC-K9_CC-TAD_RTI3.pdf"),width=5.6,height = 4.2)
+
+K9.tab[,c(1:3,11)] %>% write.tab(paste0(odir,"/CC-K9_CC-TAD_flag3.bed"))
+
+merge(data[,c("chr","start","end",nt)],K9.tab[,c(1:3,11)],by=1:3)[,-3:-1] %>% melt(id.var="flag",variable.name = "sample",value.name="RTI") %>% 
+  write.table(paste0(odir,"/CC-K9_CC-TAD_RTI3.txt"),col.names = T,row.names = F,sep="\t",quote = F)
+
+
+#################NF
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/a.Consolidation_analysis/6.NF_20180803/2.CC/NF"
+flist = c(list.files(wdir,pattern = "_CC_RTI.txt",full.names = T))
+nlist = str_split_fixed(flist,"/|_",n=20)[,14]
+nlist
+
+data = read.table(flist[1],header = T,sep = "\t")
+colnames(data)[4] = nlist[1]
+
+for(i in 2:length(flist)){
+  temp = read.table(flist[i],header = T,sep = "\t")
+  colnames(temp)[4] = nlist[i]
+  data = merge(data,temp)
+}
+sele=c("PN3-zygote", "PN5-zygote", "NF-e2cell")
+#sele=nt
+temp = merge(data[,c("chr","start","end",nf)],K9.tab[,c(1:3,11)],by=1:3)[,-3:-1] %>% melt(id.var="flag",variable.name = "sample",value.name="RTI")
+temp = temp[which(temp$sample %in% sele),]
+temp$sample = factor(temp$sample,levels = sele)
+
+ggplot(temp,aes(x=sample,y=RTI,fill=flag)) + geom_boxplot(outlier.shape = NA) + 
+  ylim(0,5) + 
+  theme_bw() + 
+  ggtitle("the RTI of each sample marked by CC-K9me3 in CC-TAD") +
+  labs(fill="K9me3 mark") +
+  theme(axis.text.x = element_text(angle=45,hjust=1))
+ggsave(paste0(odir,"/CC-K9_CC-TAD_RTI-NF.pdf"),width=5.6,height = 4.2)
+merge(data[,c("chr","start","end",nf)],K9.tab[,c(1:3,11)],by=1:3)[,-3:-1] %>% melt(id.var="flag",variable.name = "sample",value.name="RTI") %>% 
+  write.table(paste0(odir,"/CC-K9_CC-TAD_RTI-NF.txt"),col.names = T,row.names = F,sep="\t",quote = F)
+```
+
+```{r}
+fread(paste0(odir,"/CC"),col.names=c("chr","start","end","input_rep1","K9me3_rep1","input_rep2","K9me3_rep2")) %>% data.frame -> test
+test$K9 = rowMeans(test[,c(5,7)])
+test$input = rowMeans(test[,c(4,6)])
+
+temp = merge(data,test)
+
+
+ggplot(temp) + geom_point(aes(x=log2(1.5*K9/input),y=log2(`A-12h`))) +
+  theme_bw()
+ggplot(temp) + geom_point(aes(x=log2(K9/input),y=log2(CC))) +
+  theme_bw()
+
+cor.test(x=log2(temp$K9/temp$input),y=log2(temp$`A-12h`),method = "spearman")
+
+```
+
+```{r pheatmap for cluster test}
+pdata = data[,c(nt[c(-3:-2,-7)],nf[c(-3:-1,-7)])] %>% log2
+rownames(pdata) = rownames(data)
+pdata = pdata[pdata$`NF-ICM`>0,]  #filter 33
+
+pdata[which(pdata>3,arr.ind = T)] = 3
+pdata[which(pdata < -3,arr.ind = T)] = -3
+
+pdata = pdata[which(apply(pdata,1,function(x) all(x!=-3))),] #filter 9
+#pdata2 = apply(pdata,2,function(x) (x-mean(x))/sd(x)) %>% data.frame(check.names = F)
+pdata2 = pdata[,2:6]-pdata[,7:11]
+#pdata2[which(pdata2<0,arr.ind = T)]=0
+
+
+c=5
+km <- kmeans(pdata2,centers = c,iter.max = 10000,nstart = 20)  #nstart >> 20, make the kmeans stable
+data.frame(rti=pdata2$`NT-ICM`,cluster=km$cluster) %>% 
+  aggregate(.~cluster,.,mean) %>% .[order(.[,2],decreasing = T),1] ->levs
+
+ann = data.frame(cluster=factor(km$cluster,levels = levs,labels = 1:c))
+#ann = ann0
+#col=c('#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a')#,
+
+pheatmap(pdata[order(ann$cluster,-pdata2$`NT-ICM`),],cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+         color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F, 
+      annotation_row = ann,#annotation_colors = list( cluster=col),
+        show_rownames = F,show_colnames = T,
+      height = 10, width = 3,breaks = seq(-3,3,length.out = 200),
+        filename =paste0(odir,"/pheatmapTest/heatmap_NT-NF-RTI_kmeans6.png"))
+
+merge(data[,c("chr","start","end")],ann,by=0)[,-1] %>% 
+  write.table(paste0(odir,"/pheatmapTest/cluster.bed"),col.names = F,row.names = F,sep = "\t",quote = F)
+
+fread(paste0(odir,"/pheatmapTest/temp.tab")) %>% data.frame %>% 
+  group_by(V2) %>% mutate(id = row_number()) %>% spread(V2,V1) %>% 
+  .[,c(2:6)] %>% 
+  .[apply(.,1,function(x) any(!is.na(x))),] %>%
+  `colnames<-`(paste0("cluster",colnames(.))) %>% 
+  write.table(paste0(odir,"/pheatmapTest/cluster.genes.txt"),col.names = T,row.names = F,sep = "\t",quote = F,na = "")
+
+
+k9dir="~/workspace/8.NT-HiC/g.DI_ALL/g.delta_RTI/3.K9me3_in_TAD"
+fread(paste0(k9dir,"/ICM-CC.tab"),quote = "'") %>% data.frame %>% `colnames<-`(c("chr",colnames(.)[-1])) -> ICM.CC.tab
+merge(data[,c("chr","start","end")],ann,by=0)[,-1] %>% merge(ICM.CC.tab,by=c("chr","start","end"),all.x = T) -> temp
+temp$K9 = temp$cc_K9me3/temp$cc_input
+temp[,c("cluster","K9")] %>% ggplot() + geom_boxplot(aes(x=cluster,y=K9),outlier.colour = NA,fill="skyblue") + 
+  ylim(0,4) + 
+  theme_bw()
+ggsave(paste0(odir,"/pheatmapTest/boxplot_kmeans6-CC-K9.pdf"),width = 5.6,height = 4.2)
+
+fread(paste0(k9dir,"/ICM-NT.tab"),quote = "'") %>% data.frame(check.names = F) %>% `colnames<-`(c("chr",colnames(.)[-1])) -> ICM.NF.tab
+data[,c("chr","start","end","CC")] %>% merge(ann,by=0) %>% merge(ICM.NF.tab,by=c("chr","start","end"),all.x = T) -> temp
+data.frame(RTI=temp$CC,K9me3=temp$cc_K9me3/temp$cc_input) %>% log2 -> temp2
+temp2[which(temp2>3,arr.ind = T)] = 3
+temp2[which(temp2 < -3,arr.ind = T)] = -3
+ann2 = data.frame(cluster=factor(temp$cluster))
+pheatmap(temp2[order(ann2$cluster,-pdata2$`NT-ICM`),],cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+         color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F, 
+      annotation_row = ann2,#annotation_colors = list( cluster=col),
+        show_rownames = F,show_colnames = T,
+      height = 10, width = 3,breaks = seq(-3,3,length.out = 200),
+  cellwidth = 30,cellheight=0.3,
+        filename =paste0(odir,"/pheatmapTest/heatmap_kmeans6-CC-K9-RTI.png"))
+temp3=pdata
+temp3$K9me3=temp2$K9me3
+pheatmap(temp3[order(ann$cluster,-pdata2$`NT-ICM`),],cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+         color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F, 
+      annotation_row = ann,#annotation_colors = list( cluster=col),
+        show_rownames = F,show_colnames = T,
+      height = 10, width = 3,breaks = seq(-3,3,length.out = 200),
+        filename =paste0(odir,"/pheatmapTest/heatmap_NT-NF-RTI-K9_kmeans6.png"))
+```
+
+```{r kdm4d 2cell RTI }
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/i.RTI_change_analysis/2.kdm4d-2cell"
+paste0(wdir,"/all.RTI") %>% fread(header = F,col.names = c("sample","flag","chr","start","end","RTI")) %>% data.frame -> cdata
+
+gdata=cdata[which(cdata$RTI != 0.0 & cdata$RTI != Inf &cdata$flag == "ON"),c("sample","RTI")]
+gdata$NF = gsub("_rep.*","",gdata$sample)
+
+ggplot(gdata,aes(sample,RTI,fill=NF)) + geom_boxplot(size = 0.5,outlier.shape = NA) + 
+  scale_fill_manual(values=c("royalblue", "firebrick1","skyblue")) +
+  ylim(0,3.5) + theme_bw() + 
+  ggtitle("NF ICM TAD 40k") + 
+  ylab("Relative TAD intensity") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45,hjust=1))
+ggsave(paste0(wdir,"/boxplot-reps.pdf"),height = 3.6,width = 5.4)
+
+#merge-replicates
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/i.RTI_change_analysis/2.kdm4d-2cell/1.merge-rep"
+paste0(wdir,"/all.RTI") %>% fread(header = F,col.names = c("sample","flag","chr","start","end","RTI")) %>% data.frame -> cdata
+#ss=c("cc","e2cell","kdm4d-e2cell","tsa-e2cell","sertoli-e2cell","partheno-e2cell","early_2cell")
+#labels=c("CC","NT","kdm4d","tsa","sertoli","partheno","NF")
+ss=c("cc","e2cell","kdm4d-e2cell","tsa-e2cell","early_2cell")
+labels=c("CC","NT","kdm4d","tsa","NF")
+#gdata=cdata[which(cdata$RTI != 0.0 & cdata$RTI != Inf &cdata$flag == "ON" ),c("sample","RTI")]
+gdata=cdata[which(cdata$sample %in% ss &cdata$flag == "ON" ),c("sample","RTI")]
+gdata$sample = factor(gdata$sample,levels=ss,labels = labels)
+ggplot(gdata,aes(sample,RTI,fill=sample)) + geom_boxplot(size = 0.5,outlier.shape = NA) + 
+  #scale_fill_manual(values=c("royalblue", "firebrick1","skyblue")) +
+  ylim(0,4) + theme_bw() + 
+  ggtitle("CC-K9me3 marked TAD in e2cell") + 
+  ylab("Relative TAD intensity") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45,hjust=1))
+ggsave(paste0(wdir,"/boxplot-merge-reps.pdf"),height = 3.6,width = 5.4)
+
+dcast(cdata,chr+start+end+flag~sample,value.var = "RTI") -> temp
+write.table(temp,paste0(wdir,"/all.name.txt"),col.names = T,row.names = F,sep="\t",quote = F)
+
+library(FSA)
+data = cdata[order(cdata$sample,cdata$chr,cdata$start),]
+data$sample = factor(data$sample,levels=ss,labels = labels)
+kruskal.test(RTI~sample,data = data)
+Summarize(RTI~sample,data = data)
+PT = dunnTest(RTI~sample,data = data)
+PT$res
+PT$res %>%                         
+write.table(file = paste0(wdir,"/RTI.kruskal.pvalue.txt"),sep = "\t",col.names = T,row.names = F,quote = F)
+data2 = dcast(data,formula = chr + start + end~sample,value.var = "RTI")
+cdata2 = data2[apply(data2,1,function(x) !any(x==Inf | x==0)),]
+
+values=matrix(ncol = 4)
+for(i in c("e2cell","early_2cell","kdm4d-e2cell")){
+  for(j in c("e2cell","early_2cell","kdm4d-e2cell")){
+    for(k in c("two.sided","greater","less")){
+      values=rbind(values,c(i,j,k,wilcox.test(cdata2[,i], cdata2[,j],correct  = T,alternative=k)$p.value))
+    }
+  }
+}
+write.tab(values[-1,],paste0(wdir,"/RTI.wilcox.pvalue.txt"))
+```
+
+```{r CC to e2cell RTI in marked&unmarked TAD}
+#因数据更新，使用新的数据重做RTI in marked and unmarked K9me3 TAD
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/i.RTI_change_analysis/2.kdm4d-2cell/1.merge-rep"
+paste0(wdir,"/NT.RTI") %>% fread(header = F,col.names = c("sample","flag","chr","start","end","RTI")) %>% data.frame -> cdata
+ss=c("cc","A-6h_CC","A-12h_CC","e2cell")
+labels=c("CC","6-hpa","12-hpa","Early-2-cell")
+
+gdata=cdata
+gdata$sample = factor(gdata$sample,levels=ss,labels = labels)
+
+ggplot(gdata,aes(x=sample,y=RTI,fill=flag)) + geom_boxplot(outlier.shape = NA) + 
+  scale_fill_manual(values=c("royalblue", "firebrick1","skyblue")) +
+  ylim(0,6) + 
+  theme_bw() + 
+  ggtitle("the RTI of each sample marked by CC-K9me3 in CC-TAD") +
+  labs(fill="K9me3 mark") +
+  theme(axis.text.x = element_text(angle=45,hjust=1))
+
+ggsave(paste0(wdir,"/boxplot-NT-cc-e2cell.pdf"),height = 3.6,width = 5.4)
+
+cdata$sample = factor(cdata$sample,levels=ss,labels = labels)
+dcast(cdata,chr+start+end+flag~sample,value.var = "RTI") -> temp
+write.table(temp,paste0(wdir,"/NT.name.txt"),col.names = T,row.names = F,sep="\t",quote = F)
+
+library(FSA)
+data = data.frame(sample=paste0(cdata$sample,"_",cdata$flag),RTI=cdata$RTI)
+kruskal.test(RTI~sample,data = data)
+Summarize(RTI~sample,data = data)
+PT = dunnTest(RTI~sample,data = data)
+PT$res
+PT$res %>%                         
+write.table(file = paste0(wdir,"/NT-RTI.kruskal.pvalue.txt"),sep = "\t",col.names = T,row.names = F,quote = F)
+
+```
+

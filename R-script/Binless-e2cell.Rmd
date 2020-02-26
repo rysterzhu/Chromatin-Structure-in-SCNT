@@ -1,0 +1,180 @@
+---
+title: "Binless-e2cell"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(scales)
+library(data.table)
+library(foreach)
+library(binless)
+
+```
+
+
+
+```{r preprocessing}
+ddir1="~/workspace/8.NT-HiC/8.softeware_test/i.binless/2.samples"
+ddir2="~/workspace/8.NT-HiC/8.softeware_test/i.binless/3.Xiewei"
+wdir="~/workspace/8.NT-HiC/8.softeware_test/i.binless/5.test"
+a=examine_dataset(paste0(wdir,"/","tsa","-chr7.tsv"),
+                  skip=0L,skip.fbm=F, read.len=107,nrows=1000000)
+a$data #the data that was read.
+#be sure to set the proper read.len, which should be
+a$data[,median(length1)]
+a$pdangling #select begin of dangling ends. With DpnII, one can expect 0 for dangling.L and 3 for dangling.R
+a$pdiag #the distribution of sonication fragments. In this experiment, reads are mostly smaller than maxlen=900
+a$pclose #You should see an elbow at short distance, which should not be included. If not, try increasing nrows.
+         #Set dmin after it, e.g. dmin=1000. Do not set dmin<maxlen.
+
+#Create the CSdata objects that contain each dataset, using the just-determined parameters
+#Fast binless does not support circular genomes, so leave circularize=-1
+#Be sure to correctly set the condition, replicate and enzyme fields.
+#save.data=T is only needed if you plan to take a smaller portion of the data, or if you want to visualize the raw reads.
+#You could also filter the tsv file beforehand for that.
+#two outputs will be created for a given prefix: prefix_csdata.RData and if save.data==T, prefix_csdata_with_data.RData.
+#they contain the respective CSdata objects.
+name="SEMA3C"
+size="1M"
+dsets=c("GM12878","IMR90") 
+maxlens=c(900,600)
+
+wdir="~/workspace/8.NT-HiC/8.softeware_test/i.binless/4.e2cell"
+foreach (dset=dsets, maxlen=maxlens) %do% {
+  csd=read_and_prepare(paste0("zcat example/",dset,"_MboI_HICall_",name,".tsv.gz"),
+                       paste0("example/rao_HiCall_",dset,"_",name,"_",size), dset, "1",
+                       enzyme="MboI", name=paste(name,dset,"all"), circularize=-1, dangling.L=c(0),
+                       dangling.R=c(3), maxlen=maxlen, read.len=101, dmin=1000, save.data=T)
+}         
+
+
+foreach (sample=c("NT","NF")) %do% {
+  csd=read_and_prepare(paste0(wdir,"/",sample,"-chr7.tsv"),
+                       paste0(wdir,"/",sample,"-chr7.RData"), sample, "1",
+                       enzyme="MboI", dangling.L=c(3),circularize=-1,
+                       dangling.R=c(3), maxlen=800, read.len=107, dmin=1000, save.data=T)
+}
+for(sample in c("NT","NF")){
+  csd=read_and_prepare(paste0(wdir,"/",sample,"-chr7.tsv"),
+                       paste0(wdir,"/",sample,"-chr7"), 
+                       sample, "1", enzyme="MboI", name=sample,
+                       circularize=-1,dangling.L=c(-3:3),dangling.R=c(-3:3),
+                       maxlen=800, read.len=0:100000, dmin=1000, save.data=T)
+}
+
+load(paste0(wdir,"/",sample,"-chr7.RData"))
+data=get_raw_reads(csd@data, csd@biases[,min(pos)], csd@biases[,max(pos)])
+#plot the whole 1M region at 5kb resolution
+plot_binned(data, resolution=500000, b1=csd@biases[,min(pos)], e1=csd@biases[,max(pos)])
+#plot a 20kb subset of it with base resolution (arrow plot)
+plot_raw(data, b1=data[,min(rbegin1)+8000000], e1=data[,min(rbegin1)+12000000])
+
+
+
+#We now process the csd objects in a format amenable for binless
+#we merge all datasets we want normalized together (they must represent the same genomic region)
+csd1=get(load(paste0(wdir,"/NT-chr7_csdata_with_data.RData")))
+csd2=get(load(paste0(wdir,"/NF-chr7_csdata_with_data.RData")))
+cs=merge_cs_norm_datasets(list(csd1,csd2), different.decays="none")
+save(cs,file=paste0(wdir,"/merge-chr7_cs_norm_data.RData"))
+
+```
+
+
+```{r}
+#You can also extract it from the CSnorm object built during preprocessing
+load(paste0(wdir,"/merge-chr7_cs_norm_data.RData"))
+mat=binless:::bin_data(cs,resolution=100000)
+#fwrite(mat,file = "example/rao_HiCall_SEMA3C_1M_mat_5kb.dat")
+
+#The fast binless algorithm computes a binless normalization without estimating
+#the fusion penalty and the significance threshold.
+#We do a maximum of nouter steps (or less if the relative precision is lower than tol_val)
+#and hold the fusion penalty fixed at lam2.
+#Play with lam2 to see its effect. This is the parameter that is optimized in the
+#full-blown binless, along with another threshold (lambda1, set to zero here),
+#which determines the significance of a given signal/difference contribution
+#pass one value for all, or a value for each dataset
+alpha=0.1
+lam2=c(2.53,4.51)
+lam1=c(0.5,0.5)
+out=binless:::fast_binless(mat, mat[,nlevels(bin1)], alpha, lam2, lam1)
+
+#all data is contained in the following matrix
+a=as.data.table(out$mat)
+a=a[pos1>10000000&pos1<14000000&pos2>10000000&pos2<14000000,]
+#Here follow the plots of the observed and fitted quantities (be sure to check out signal and binless plots)
+#observed matrix (input data)
+plot_binless_matrix(a, upper="observed", lower="observed")
+#ggsave(filename="example/rao_HiCall_SEMA3C_1M_observed.pdf", width=18,height=8)
+#number of observables (input data)
+plot_binless_matrix(a, upper="nobs", lower="nobs")
+#fitted background
+plot_binless_matrix(a, upper="background", lower="background")
+#fitted biases
+ggplot(data.table(bin=1:nlevels(mat[,bin1]),log_biases=out$biases$estimate))+geom_point(aes(bin,log_biases))
+#biases matrix
+plot_binless_matrix(a, upper="biasmat", lower="biasmat")
+#fitted decay
+ggplot(unique(a[,.(distance,decaymat)]))+geom_line(aes(distance,decaymat))+scale_x_log10()+scale_y_log10()
+#decay matrix
+plot_binless_matrix(a, upper="decaymat", lower="decaymat")
+#signal matrix ( = what is different from the background)
+plot_binless_signal_matrix(a)
+#ggsave(filename="example/rao_HiCall_SEMA3C_1M_fast_signal.pdf", width=18,height=8)
+#weights ( = 1/variance )
+plot_binless_matrix(a, upper="weight", lower="weight")
+#patch number
+plot_binless_matrix(a, upper="patchno", lower="patchno", trans="identity")
+#binless matrix ( = signal + decay)
+plot_binless_matrix(a, upper="binless", lower="binless")
+#ggsave(filename="example/rao_HiCall_SEMA3C_1M_fast_binless.pdf", width=18,height=8)
+#binless and observed
+plot_binless_matrix(a, upper="binless", lower="observed")
+#ggsave(filename="example/rao_HiC056-03_12M_fast_binless_and_observed.pdf", width=18,height=8)
+
+#virtual 4C plots
+plot_virtual_4C(a, start=500000, width=200000)
+#ggsave(filename="example/rao_HiC056-03_12M_virtual_4C_8.07M.pdf", width=18,height=8)
+plot_virtual_4C(a, start=11100000, width=200000)
+ggsave(filename=paste0(wdir,"/virtual-4C-11M-200k.pdf"), width=18,height=8)
+
+
+### Difference detection
+
+#now we compute differences between the two datasets
+ref=mat[,name[1]]
+alpha=0.49
+lam2=3.38
+lam1=0.14
+diff=as.data.table(binless:::fast_binless_difference(out, ref, alpha, lam2, lam1))
+
+#log(observed)
+plot_binless_matrix(diff, upper="observed", lower="observed")
+#log difference of all datasets wrt ref
+plot_binless_difference_matrix(diff[as.character(name)!=as.character(ref)])
+#ggsave(filename="example/rao_HiCall_SEMA3C_1M_fast_binless_difference.pdf", width=10,height=8)
+#ggsave(filename="example/rao_HiC056-03_12M_fast_binless_difference.pdf", width=10,height=8)
+#patch number
+plot_binless_matrix(diff[as.character(name)!=as.character(ref)], upper="patchno", lower="patchno", trans="identity")
+
+
+```
+
+```{r}
+data=a$data %>% data.frame()
+data$test =data$rbegin2 -data$rbegin1 
+ggplot(data[abs(data$test)<1000&data$strand1==1&data$strand2==0,])+
+    geom_histogram(aes(test),binwidth=10)+
+    xlab("sonication fragment size")+ylab("number of reads")
+
+
+
+
+
+
+quantile(x=test[test<1000],probs = c(0.5,0.75,0.9))
+```
+

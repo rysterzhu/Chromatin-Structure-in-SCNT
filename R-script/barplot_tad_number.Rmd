@@ -1,0 +1,120 @@
+---
+title: "barplot_tad_number"
+author: "zhu"
+date: "2018/5/17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggsignif)
+```
+
+```{r boundary number}
+# echo -e "sample\tnumber" > counts.tab
+# for i in *bed;do k=${i%%.*}; c=`cat $i|wc -l `; echo -e "$k\t$c" >> counts.tab; done
+wdir="~/workspace/8.NT-HiC/f.IS_ALL/1.except_res40k_is1M_ids200k_nt025/1.cat_boundary"
+counts = read.table(paste0(wdir,"/counts.tab"),header = T, sep ="\t")
+keys=c("cc","05h","1h","2h","3h","6h","12h","e2cell","l2cell", "4cell","8cell","morula","icm","te")
+counts$sample = factor(counts$sample,levels = keys)
+ggplot(counts) + geom_bar(aes(x=sample,y = number),stat = 'identity',position = "stack",fill="darkblue") + theme_classic() + xlab("") + ylab("count") + ggtitle("TAD boundary number")
+ggsave(paste0(wdir,"/count.pdf"),height = 3.6,width = 5.2)
+
+
+```
+
+```{r insulation score boxplot}
+library(ggsignif)
+wdir="~/workspace/8.NT-HiC/f.IS_ALL/4.except_norm_mean_raw_20180531/cat_boundary"
+ss=c("cc","05h","1h","2h","3h","6h","12h","e2cell","l2cell","4cell","8cell","morula","icm","te")
+#ss=c("sperm", "MII", "PN3", "PN5", "e2cell", "l2cell", "8cell", "ICM")
+
+
+
+all.ins = read.table(paste0(wdir,"/all.ins"),header = F,sep = "\t")
+colnames(all.ins) = c("sample","boundary_strength")
+all.ins$sample = factor(all.ins$sample,levels = ss)
+
+(ggplot(all.ins,aes(sample,boundary_strength)) + geom_boxplot(outlier.shape = NA,fill = "#66327C",notch = T) 
+    + theme_bw() + ggtitle("Insulation TAD boundary strength(xiewei)") 
+    + theme(plot.title = element_text(hjust = 0.5)) 
+    + ylab("Boundary Strength") + xlab("") + scale_y_continuous(limits = c(0,2),expand = c(0,0))  
+    + geom_signif(comparisons = list(c("cc", "05h"),c("6h", "e2cell"),c("l2cell", "4cell")), y_position = 1.9,test = "wilcox.test", map_signif_level=TRUE)
+    + geom_signif(comparisons = list(c("05h", "1h"), c("2h","6h")), y_position = 1.7,test = "wilcox.test", map_signif_level=TRUE)
+    + geom_signif(comparisons = list(c("6h", "l2cell")), y_position = 1.5,test = "wilcox.test", map_signif_level=TRUE)
+    )
+
+ggsave(paste0(wdir,"/boundary_strength.png"),width = 7.2, height = 4.8)
+
+
+(ggplot(all.ins,aes(sample,boundary_strength)) + geom_boxplot(outlier.shape = NA,fill = "#66327C",notch = T) 
+    + theme_bw() + ggtitle("Insulation TAD boundary strength") + theme(plot.title = element_text(hjust = 0.5)) 
+    + ylab("Boundary Strength") + xlab("") + scale_y_continuous(limits = c(0,1.5),expand = c(0,0))  
+    + geom_signif(comparisons = list(c("cc", "05h"),c("1h","2h"),c("6h", "e2cell"),c("l2cell", "4cell"),c("8cell","morula")), y_position = 1.4,test = "wilcox.test", map_signif_level=TRUE)
+    + geom_signif(comparisons = list(c("05h", "1h"), c("2h","6h"),c("e2cell","l2cell"),c("4cell","8cell")), y_position = 1.2,test = "wilcox.test", map_signif_level=TRUE)
+    )
+
+
+
+
+# for(i in 2:length(levels(all.ins$sample))){
+# x = all.ins$boundary_strength[which(all.ins$sample == levels(all.ins$sample)[i-1])]
+# y = all.ins$boundary_strength[which(all.ins$sample == levels(all.ins$sample)[i])]
+# wt = wilcox.test(x,y)
+# #ct = chisq.test(x,y)   # 卡方检验必须数量相等 
+# tt = t.test(x,y)
+# print(c("wt",levels(all.ins$sample)[i-1],wt$p.value))
+# #print("ct",ct)
+# print(c("tt",levels(all.ins$sample)[i-1],tt$p.value))
+# }
+```
+
+```{r insulation score}
+library(ggsignif)
+wdir="~/workspace/8.NT-HiC/3.public_data/7.insulation_score/cat_boundary"
+
+ss=c("cc","05h","1h","2h","3h","6h","12h","e2cell","l2cell", "4cell","8cell","morula")
+
+
+
+all.ins = read.table(paste0(wdir,"/all.ins"),header = F,sep = "\t")
+colnames(all.ins) = c("sample","boundary_strength")
+all.ins$sample = factor(all.ins$sample,levels = ss)
+
+(ggplot(all.ins,aes(sample,boundary_strength)) + geom_boxplot(outlier.shape = NA,fill = "#66327C",notch = T) 
+    + theme_bw() + ggtitle("Insulation TAD boundary strength") 
+    + theme(plot.title = element_text(hjust = 0.5)) 
+    + ylab("Boundary Strength") + xlab("") + scale_y_continuous(limits = c(0,1.5),expand = c(0,0))  
+    # + geom_signif(comparisons = list(c("PN3", "PN5"),c("6h", "e2cell"),c("l2cell", "4cell")), y_position = 1.9,test = "wilcox.test", map_signif_level=TRUE)
+    # + geom_signif(comparisons = list(c("05h", "1h"), c("2h","6h")), y_position = 1.7,test = "wilcox.test", map_signif_level=TRUE)
+    # + geom_signif(comparisons = list(c("6h", "l2cell")), y_position = 1.5,test = "wilcox.test", map_signif_level=TRUE)
+    )
+
+ggsave(paste0(wdir,"/boundary_strength.png"),width = 7.2, height = 4.8)
+```
+
+
+```{r  TAD length boxplot}
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/2.except_norm_100M_20180825/2.unoverlap_tads"
+all.len = paste0(wdir,"/all.length") %>% 
+  read.table(header = F,sep = "\t") %>% 
+  `colnames<-`(c("sample","length"))
+all.len$sample = factor(all.len$sample,levels = ss)
+
+ggplot(all.len,aes(sample,length)) + geom_boxplot(outlier.shape = NA,fill = "skyblue",notch = T) + 
+    theme_bw() + labs(title="TAD length",hjust=0.5) + theme(plot.title = element_text(hjust = 0.5)) +
+    ylab("TAD length") + xlab("") + scale_y_log10(limits=c(1e5,1e9))  + 
+   # geom_signif(comparisons = list(c("2h","6h"),c("cc", "05h")), y_position = 8.9,test = "wilcox.test", map_signif_level=TRUE)+ 
+   # geom_signif(comparisons = list(c("05h", "2h")), y_position = 8.6,test = "wilcox.test", map_signif_level=TRUE) +
+  theme_bw()
+
+paste0(wdir,"/length.pdf") %>% ggsave(width = 7.2, height = 4.8)
+
+
+(ggplot(all.len,aes(sample,length)) + geom_boxplot(outlier.shape = NA,fill = "skyblue",notch = T) + 
+    theme_bw() + labs(title="TAD length",hjust=0.5) + theme(plot.title = element_text(hjust = 0.5)) +
+    ylab("TAD length") + xlab("") + scale_y_log10(limits=c(1e5,1e9)) 
+  + geom_signif(comparisons = list(c("cc", "05h"),c("1h","2h"),c("6h", "e2cell"),c("l2cell", "4cell"),c("8cell","morula")), y_position = 8.9,test = "t.test", map_signif_level=TRUE)
+  + geom_signif(comparisons = list(c("05h", "1h"), c("2h","6h"),c("e2cell","l2cell"),c("4cell","8cell")), y_position = 8.6,test = "t.test", map_signif_level=TRUE)
+    )
+```

@@ -1,0 +1,681 @@
+---
+title: "loops-analysis"
+author: "zhu"
+date: "2018/12/3"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("~/R/library.R")
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/early_2cell/a.SE_pairs_most"
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/late_2cell/a.SE_pairs_most"
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/8cell"
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/ICM/a.SE_pairs_most"
+
+```
+
+
+```{r cuffdiff FPKM}
+paste0(wdir,"/all.isoforms.txt") %>% fread(header = F,col.names = c("id","type")) %>% data.frame -> genes
+"~/workspace/8.NT-HiC/b.RNA/1.align/1.ZhangYi_NT_RNA/5.cuffdiff/1.ivf/isoforms.fpkm_tracking" %>% 
+  fread(select = c("tracking_id","1cell_FPKM","2cell_FPKM"),col.names = c("id","ivf1","ivf2")) -> ivf.exp  
+"~/workspace/8.NT-HiC/b.RNA/1.align/1.ZhangYi_NT_RNA/5.cuffdiff/2.nt/isoforms.fpkm_tracking" %>% 
+  fread(select = c("tracking_id","1cell_FPKM","2cell_FPKM"),col.names = c("id","nt1","nt2")) -> nt.exp 
+
+merge(genes,ivf.exp) %>% merge(nt.exp) -> exp
+exp[,-1] %>% melt(id.var="type",variable.name="sample",value.name="FPKM") %>% 
+  #ggplot(aes(x=type,y=log2(FPKM),fill=sample)) + geom_boxplot()
+  ggplot(aes(x=sample,y=log2(FPKM),fill=type)) + geom_boxplot()
+
+"~/workspace/8.NT-HiC/b.RNA/1.align/3.Lichong_RNA/2.cuffdiff/2.ICM/isoforms.fpkm_tracking" %>% 
+  fread(select = c("tracking_id","NT_ICM_FPKM","NT_TE_FPKM"),col.names = c("id","nt_icm","nt_te")) %>% 
+  merge(genes) %>% .[,-1] %>% melt(id.var="type",variable.name="sample",value.name="FPKM") %>% 
+  #ggplot(aes(x=type,y=log2(FPKM),fill=sample)) + geom_boxplot()
+  ggplot(aes(x=sample,y=log2(FPKM),fill=type)) + geom_boxplot()
+
+
+"~/workspace/8.NT-HiC/b.RNA/1.align/3.Lichong_RNA/2.cuffdiff/1.2cell/isoforms.fpkm_tracking" %>% 
+  fread(select = c("tracking_id","NT_2cell_FPKM"),col.names = c("id","nt_2cell")) -> temp1
+"~/workspace/8.NT-HiC/b.RNA/1.align/4.XieWei_RNA/2.cuffdiff/2.2cell/isoforms.fpkm_tracking" %>% 
+  fread(select = c("tracking_id","NF_2cell_FPKM"),col.names = c("id","nf_2cell")) -> temp2
+
+merge(genes,temp1) %>% merge(temp2) %>% .[,-1] %>% melt(id.var="type",variable.name="sample",value.name="FPKM") %>% 
+  ggplot(aes(x=type,y=log10(FPKM),fill=sample)) + geom_boxplot(outlier.shape = NA)
+  #ggplot(aes(x=sample,y=log2(FPKM),fill=type)) + geom_boxplot()
+
+
+```
+
+```{r}
+paste0(wdir,"/all.genes.tab") %>% fread(header=F,col.names = c("id","type")) %>% data.frame -> genes
+
+temp = sampleTable
+temp=log2(dds.temp[row.names(dds.temp) %in% genes$id,]+1) %>% t %>% cbind(sampleTable,.)
+temp2 = aggregate(.~period,data=temp,mean)
+rownames(temp2) <- temp2$period
+temp2 = temp2[,-3:-1] %>% t
+merge(genes,temp2,by.x="id",by.y=0) %>% .[,-1] %>% melt(id.var="type",variable.name="sample",value.name="expression") %>% 
+  #ggplot(aes(x=type,y=expression,fill=sample)) + geom_boxplot(outlier.shape = NA)
+  ggplot(aes(x=sample,y=expression,fill=type)) + geom_boxplot() + theme(axis.text.x = element_text(angle = 45,hjust=1))
+
+ggsave(paste0(wdir,"/DESeq-genes.exp.pdf"),width=6.4,height = 4.2)
+
+##OLD
+paste0(wdir,"/NF.ep.pairs") %>%
+fread %>% data.frame -> eps
+eps$distance = abs(rowMeans(eps[,6:7]) - rowMeans(eps[,2:3]))
+eps$sample="NF"
+
+paste0(wdir,"/NT.ep.pairs") %>%
+fread %>% data.frame -> temp
+temp$distance = abs(rowMeans(temp[,6:7]) - rowMeans(temp[,2:3]))
+temp$sample="NT"
+
+rbind(eps,temp) %>%
+ggplot() + geom_density(aes(x=log10(distance),color=sample)) + 
+  #ylim(0,1) +
+  xlim(4,9) + 
+  annotation_logticks(sides = "bottom")+
+  theme_bw()
+ggsave(paste0(wdir,"/distance.ep.pdf"),width = 5.6,height=4.2)
+
+##############
+paste0(wdir,"/NF.pp.pairs") %>%
+fread %>% data.frame -> eps
+eps$distance = abs(rowMeans(eps[,6:7]) - rowMeans(eps[,2:3]))
+eps$sample="NF"
+
+paste0(wdir,"/NT.pp.pairs") %>%
+fread %>% data.frame -> temp
+temp$distance = abs(rowMeans(temp[,6:7]) - rowMeans(temp[,2:3]))
+temp$sample="NT"
+
+rbind(eps,temp) %>%
+ggplot() + geom_density(aes(x=log10(distance),color=sample)) + 
+  #ylim(0,1) +
+  xlim(4,9) + 
+  annotation_logticks(sides = "bottom")  +
+  theme_bw()
+ggsave(paste0(wdir,"/distance.pp.pdf"),width = 5.6,height=4.2)
+
+########
+paste0(wdir,"/NF.all.Pairs") %>%
+fread %>% data.frame -> eps
+eps$distance = abs(rowMeans(eps[,5:6]) - rowMeans(eps[,2:3]))
+eps$sample="NF"
+
+paste0(wdir,"/NT.all.Pairs") %>%
+fread %>% data.frame -> temp
+temp$distance = abs(rowMeans(temp[,5:6]) - rowMeans(temp[,2:3]))
+temp$sample="NT"
+rbind(eps,temp) %>%
+ggplot() + geom_density(aes(x=log10(distance),color=sample)) + 
+  #ylim(0,1) +
+  xlim(4,9) + 
+  annotation_logticks(sides = "bottom")  +
+  theme_bw()
+ggsave(paste0(wdir,"/distance.allPairs.pdf"),width = 5.6,height=4.2)
+```
+
+```{r output cuffdiff FPKM}
+"~/workspace/8.NT-HiC/b.RNA/1.align/1.ZhangYi_NT_RNA/5.cuffdiff/1.ivf/isoforms.fpkm_tracking" %>% 
+  fread(select = c("tracking_id","gene_id","1cell_FPKM","2cell_FPKM"),
+    col.names = c("id","gene_name","IVF-1cell","IVF-2cell")) -> ivf.exp  
+"~/workspace/8.NT-HiC/b.RNA/1.align/1.ZhangYi_NT_RNA/5.cuffdiff/2.nt/isoforms.fpkm_tracking" %>% 
+  fread(select = c("tracking_id","1cell_FPKM","2cell_FPKM"),col.names = c("id","NT-1cell","NT-2cell")) -> nt.exp 
+merge(ivf.exp,nt.exp) %>% 
+  write.tab("~/workspace/8.NT-HiC/b.RNA/1.align/1.ZhangYi_NT_RNA/5.cuffdiff/expression-IVF-NT.txt",col.names=T,row.names=F)
+
+
+```
+
+```{r all genes in ep }
+paste0(wdir,"/genes.uniq.txt") %>% fread(col.names = c("id","flag")) %>% data.frame() -> genes
+"~/workspace/8.NT-HiC/b.RNA/1.align/1.ZhangYi_NT_RNA/5.cuffdiff/1.ivf/genes.fpkm_tracking" %>% 
+  fread(select = c("tracking_id","1cell_FPKM","2cell_FPKM"),col.names = c("id","ivf1","ivf2")) -> ivf.exp  
+"~/workspace/8.NT-HiC/b.RNA/1.align/1.ZhangYi_NT_RNA/5.cuffdiff/2.nt/genes.fpkm_tracking" %>% 
+  fread(select = c("tracking_id","1cell_FPKM","2cell_FPKM"),col.names = c("id","nt1","nt2")) -> nt.exp 
+
+merge(genes,ivf.exp) %>% merge(nt.exp) -> exp
+
+exp[order(exp$flag),3:6] %>% log10 %>%
+pheatmap(cluster_rows = F,cluster_cols = F,breaks = seq(-5,5,length.out =  100))
+
+exp[exp$flag=="NF",3:6] %>% #apply(.,1,function(x) (x-mean(x))/sd(x)) %>% 
+  pheatmap(cluster_rows = T,cluster_cols = T)
+
+####deseq2
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/early_2cell/a.SE_pairs_most/1.distal_5M-20M"
+paste0(wdir,"/all.ep.genes") %>% fread(col.names = c("id","flag")) %>% data.frame() -> genes
+#temp = rld
+temp=log2(dds.temp[row.names(dds.temp) %in% genes$id,]+1) %>% t %>% cbind(sampleTable,.)
+temp2 = aggregate(.~period,data=temp,mean)
+rownames(temp2) <- temp2$period
+temp2 = temp2[,-3:-1] %>% t
+
+temp2[rownames(temp2) %in% genes$id[genes$flag=="NF"],c("ivf1","ivf2","nt1","nt2")] %>% 
+  #.[rownames(.) %in% rownames(res_frame)[res_frame$change =="UP"],] %>% 
+  #    .[rownames(.) %in% rownames(res_frame2)[res_frame2$change !="UP"],] %>% 
+  data.frame ->temp4
+#km=kmeans(temp4,centers = 4,iter.max = 10000,nstart=30)
+temp4[temp4$ivf2>10,] %>% 
+pheatmap(.,cluster_rows = T,cluster_cols = F,filename = paste0(wdir,"/genes-NF-spe.exp.pheatmap.pdf"),
+  cellheight = 10,width = 5)
+
+
+temp4[temp4$ivf2>10,c("ivf2","nt2")] %>% melt(variable.name="sample",value.name="expression") %>% 
+ggplot(aes(x=sample,y=expression)) + geom_boxplot() + 
+  theme_bw()
+
+####NT spe
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/early_2cell/a.SE_pairs_most"
+paste0(wdir,"/all.ep.genes") %>% fread(col.names = c("id","flag")) %>% data.frame() -> genes
+#temp = rld
+temp=log2(dds.temp[row.names(dds.temp) %in% genes$id,]+1) %>% t %>% cbind(sampleTable,.)
+temp2 = aggregate(.~period,data=temp,mean)
+rownames(temp2) <- temp2$period
+temp2 = temp2[,-3:-1] %>% t
+
+res_frame3 <- data.frame(results(dds,contrast = c("period","nt2","ivf2")))
+res_frame3 <- res_frame3[which(!is.na(res_frame3$padj)),]
+res_frame3$change <- as.factor(ifelse(res_frame3$padj < 0.05 & abs(res_frame3$log2FoldChange) > log2(2),
+                               ifelse(res_frame3$log2FoldChange > 0, "UP", "DOWN"), "NOT"))
+
+temp2[rownames(temp2) %in% genes$id[genes$flag=="NT"],c("ivf1","ivf2","nt1","nt2")] %>% 
+  .[rownames(.) %in% rownames(res_frame3)[res_frame3$change =="UP"],] %>% 
+  data.frame ->temp4
+temp4[temp4$nt2>0,] %>% 
+pheatmap(.,cluster_rows = T,cluster_cols = F,filename = paste0(wdir,"/genes-NT-spe.exp.pheatmap.pdf"),
+  cellheight = 10,width = 5)
+
+#volcano
+res_frame2 = data.frame(results(dds,contrast = c("period","nt2","nt1")))
+res_frame2 <- res_frame2[which(!is.na(res_frame2$padj)),]
+res_frame2$change <- as.factor(ifelse(res_frame2$padj < 0.05 & abs(res_frame2$log2FoldChange) > log2(2),
+                               ifelse(res_frame2$log2FoldChange > 0, "UP", "DOWN"), "NOT"))
+res_frame <- data.frame(results(dds,contrast = c("period","ivf2","ivf1")))
+res_frame <- res_frame[which(!is.na(res_frame$padj)),]
+res_frame$change <- as.factor(ifelse(res_frame$padj < 0.05 & abs(res_frame$log2FoldChange) > log2(2),
+                               ifelse(res_frame$log2FoldChange > 0, "UP", "DOWN"), "NOT"))
+
+g = ggplot(data=res_frame, aes(x=log2FoldChange, y=-log10(padj), color=change)) +
+  geom_point(alpha=0.8, size=1,na.rm = T) +
+  theme_set(theme_set(theme_bw(base_size=20)))+
+  xlab("log2 fold change") + ylab("-log10 pvalue") +
+  #ggtitle( this_tile  ) + theme(plot.title = element_text(size=15,hjust = 0.5))+
+  scale_colour_manual(values = c('darkgreen','grey','red'))  ## corresponding to the levels(res$change)
+print(g)
+
+spe_genes <- c("Hoxa9","Hoxa10","Hoxa1","Hoxc1")
+spe_frame <- res_frame[spe_genes,]
+spe_frame$name <- as.factor(rownames(spe_frame))
+g2 <- g + 
+  geom_point(aes(x=log2FoldChange, y=-log10(pvalue)), data = spe_frame, color="yellow")+
+  geom_text(aes(x=log2FoldChange, y=-log10(pvalue),label=name,vjust=-1,hjust=-0.1), data = spe_frame,color="black")
+
+```
+
+```{r extra distal ep genes }
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/late_2cell/4.p001_10"
+res_frame2 = data.frame(results(dds,contrast = c("period","nt2","nt1")))
+res_frame2 <- res_frame2[which(!is.na(res_frame2$padj)),]
+res_frame2$change <- as.factor(ifelse(res_frame2$padj < 0.05 & abs(res_frame2$log2FoldChange) > log2(2),
+                               ifelse(res_frame2$log2FoldChange > 0, "UP", "DOWN"), "NOT"))
+res_frame <- data.frame(results(dds,contrast = c("period","ivf2","ivf1")))
+res_frame <- res_frame[which(!is.na(res_frame$padj)),]
+res_frame$change <- as.factor(ifelse(res_frame$padj < 0.05 & abs(res_frame$log2FoldChange) > log2(2),
+                               ifelse(res_frame$log2FoldChange > 0, "UP", "DOWN"), "NOT"))
+
+paste0(wdir,"/all.ep.genes") %>% fread(col.names = c("id","flag")) %>% data.frame() -> genes
+
+temp=log2(dds.temp[row.names(dds.temp) %in% genes$id,]+1) %>% t %>% cbind(sampleTable,.)
+temp2 = aggregate(.~period,data=temp,mean)
+rownames(temp2) <- temp2$period
+temp2 = temp2[,-3:-1] %>% t
+temp2[rownames(temp2) %in% genes$id[genes$flag=="both"],c("ivf1","ivf2","nt1","nt2")] %>% 
+  .[rownames(.) %in% rownames(res_frame)[res_frame$change =="UP"],] %>% 
+      .[rownames(.) %in% rownames(res_frame2)[res_frame2$change !="UP"],] %>% data.frame ->temp4
+#km=kmeans(temp4,centers = 4,iter.max = 10000,nstart=30)
+pheatmap(temp4,cluster_rows = T,cluster_cols = F,filename = paste0(wdir,"/both.exp.pheatmap.pdf"),
+  cellheight = 10,width = 5)
+
+
+```
+
+```{r 8cell extra distal ep genes}
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/8cell/4.p001_10"
+paste0(wdir,"/all.ep.genes") %>% fread(col.names = c("id","flag")) %>% data.frame() -> genes
+
+temp=log2(dds.temp[row.names(dds.temp) %in% genes$id,c("NF_8cell_rep1","NF_8cell_rep2")]+1) %>% merge(genes,by.x=0,by.y="id")
+rownames(temp) = temp$Row.names
+temp[which(temp$flag=="NF" &　(temp$NF_8cell_rep1 + temp$NF_8cell_rep2) > 20),2:3] %>%
+pheatmap(.,cluster_rows = F,cluster_cols = F)
+temp[which(temp$flag=="both" &　(temp$NF_8cell_rep1 + temp$NF_8cell_rep2) > 20),1,drop=F] %>% 
+  write.tab(paste0(wdir,"/test"))
+
+
+```
+
+```{r}
+sf=c("Yy1","Ctcf","Hdgf","Cggbp1","Adnp","Hmgb2","Gatad2a","Znf512","Znf532","Morc2a","Gatad2b","Morc3","Gabpa","Nrf1","Zbtb11","znf143","Jarid2","Znf281","Mga","Prdm10","Znf296","Nr0b1","Pou5f1","Znf462","Esrrb","Dppa2") #Morc2
+
+assay(rld) %>% .[rownames(.) %in% sf,] %>% 
+  pheatmap(cluster_rows = T,cluster_cols = F)
+
+assay(rld) %>% rownames ->test
+sf[! sf %in% test]
+```
+
+```{r EP NP genes expression}
+#wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/early_2cell/4.distal_100k_20181205/1.allPairs_analysis"
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/late_2cell/4.p001_10"
+paste0(wdir,"/NT.genes") %>% fread(header = F,col.names = c("id","type")) -> genes
+assay(rld) %>% merge(genes,by.x=0,by.y="id") %>% 
+  #.[,c("NF_2cell_rep1","NF_2cell_rep2","type")] %>% 
+  .[,c("nt2_rep1","nt2_rep2","type")] %>% 
+  melt(id.var="type",variable.name="sample",value.name="expression") %>% 
+  ggplot(aes(x=sample,y=expression,color=type)) + geom_violin() + 
+  ggtitle("NT-e2") + 
+  theme_bw()
+ggsave(paste0(wdir,"/NT.exp.violin.pdf"),width = 5.6,height=4.2)
+
+paste0(wdir,"/NF.genes") %>% fread(header = F,col.names = c("id","type")) -> genes
+assay(rld) %>% merge(genes,by.x=0,by.y="id") %>% 
+  .[,c("NF_2cell_rep1","NF_2cell_rep2","type")] %>% 
+  melt(id.var="type",variable.name="sample",value.name="expression") %>% 
+  ggplot(aes(x=sample,y=expression,color=type)) + geom_violin() + 
+  ggtitle("NF-e2") + 
+  theme_bw()
+ggsave(paste0(wdir,"/NF.exp.violin.pdf"),width = 5.6,height=4.2)
+
+
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/ICM/4.NT-NF/1.allPairs_analysis"
+###EP NP PP
+paste0(wdir,"/NT.genes") %>% fread(header = F,col.names = c("id","type")) -> genes
+genes$state = "NT"
+temp=assay(rld) %>% merge(genes,by.x=0,by.y="id")
+#temp$exp=rowMeans(temp[,c("nt2_rep1","nt2_rep1")])
+temp$exp=rowMeans(temp[,c("NT_2cell_rep1","NT_2cell_rep2","NT_2cell_rep3")])
+temp = temp[,c("state","type","exp")]
+
+paste0(wdir,"/NF.genes") %>% fread(header = F,col.names = c("id","type")) -> genes2
+genes2$state = "NF"
+temp2=assay(rld) %>% merge(genes2,by.x=0,by.y="id")
+temp2$exp=rowMeans(temp2[,c("NF_2cell_rep1","NF_2cell_rep2")])
+temp2 = temp2[,c("state","type","exp")]
+
+rbind(temp,temp2) %>% 
+  ggplot(aes(x=state,y=exp,color=type)) + geom_boxplot() + 
+  theme_bw()
+ggsave(paste0(wdir,"/NF-NT.exp.violin.pdf"),width = 5.6,height=4.2)
+
+
+#EP PP both
+load("~/workspace/8.NT-HiC/b.RNA/4.PCA/DESeq2.RData")
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/early_2cell/a.SE_pairs_most"
+paste0(wdir,"/NT2.genes") %>% fread(header = F,col.names = c("id","type")) -> genes
+genes$state = "NT"
+temp=assay(rld)%>% merge(genes,by.x=0,by.y="id")
+temp$exp=rowMeans(temp[,c("NT_2cell_rep1","NT_2cell_rep2","NT_2cell_rep3")])
+temp = temp[,c("state","type","exp")]
+
+paste0(wdir,"/NF2.genes") %>% fread(header = F,col.names = c("id","type")) -> genes2
+genes2$state = "NF"
+temp2=assay(rld)%>% merge(genes2,by.x=0,by.y="id")
+temp2$exp=rowMeans(temp2[,c("NF_2cell_rep1","NF_2cell_rep2")])
+temp2 = temp2[,c("state","type","exp")]
+
+rbind(temp,temp2) %>% .[.[["type"]]!="both",] -> temp3
+nt=wilcox.test(temp3[temp3$state =="NT"&temp3$type=="EP","exp"],temp3[temp3$state =="NT"&temp3$type=="PP","exp"])$p.value
+nf=wilcox.test(temp3[temp3$state =="NF"&temp3$type=="EP","exp"],temp3[temp3$state =="NF"&temp3$type=="PP","exp"])$p.value
+ggplot(temp3,aes(x=type,y=exp,color=type)) + geom_boxplot() + facet_wrap(~state) + 
+  ylim(-5,20)+
+  ggtitle(paste0("ICM/",nf,"/",nt)) + 
+  theme_bw()
+ggsave(paste0(wdir,"/NF-NT.EP-PP.exp.boxplot.pdf"),width = 5.6,height=4.2)
+
+write.tab(temp3,file = paste0(wdir,"/NF-NT.EP-PP.exp.boxplot.txt"),col.names = T)
+
+##########TEP 
+load("~/workspace/8.NT-HiC/b.RNA/4.PCA/DESeq2.RData")
+library(DESeq2)
+wdir="~/workspace/8.NT-HiC/q.FitHiC2/3.e2cell-fithic1.1.1/2.find-SEP/2.TEP-analysis/1.all-EP"
+paste0(wdir,"/NT2.genes") %>% fread(header = F,col.names = c("id","type")) -> genes
+genes$state = "NT"
+temp=assay(rld)%>% merge(genes,by.x=0,by.y="id")
+temp$exp=rowMeans(temp[,c("NT_2cell_rep1","NT_2cell_rep2","NT_2cell_rep3")])
+temp = temp[,c("state","type","exp")]
+
+paste0(wdir,"/NF2.genes") %>% fread(header = F,col.names = c("id","type")) -> genes2
+genes2$state = "NF"
+temp2=assay(rld)%>% merge(genes2,by.x=0,by.y="id")
+temp2$exp=rowMeans(temp2[,c("NF_2cell_rep1","NF_2cell_rep2")])
+temp2 = temp2[,c("state","type","exp")]
+
+rbind(temp,temp2) %>% .[.[["type"]]!="both",] -> temp3
+options(scipen = 20)
+nt=wilcox.test(temp3[temp3$state =="NT"&temp3$type=="EP","exp"],temp3[temp3$state =="NT"&temp3$type=="PP","exp"])$p.value
+nf=wilcox.test(temp3[temp3$state =="NF"&temp3$type=="EP","exp"],temp3[temp3$state =="NF"&temp3$type=="PP","exp"])$p.value 
+ggplot(temp3,aes(x=type,y=exp,color=type)) + geom_boxplot() + facet_wrap(~state) + 
+  ylim(-5,20)+
+  ggtitle(paste0("e2cell/",nf,"/",nt)) + 
+  theme_bw()
+ggsave(paste0(wdir,"/NF-NT.EP-PP.exp.boxplot.pdf"),width = 5.6,height=4.2)
+```
+
+```{r ICM}
+res <- results(dds,contrast = c("period","NF_ICM","NT_ICM"))
+res[which(res$padj <0.05 & res$log2FoldChange>0),] %>% data.frame() %>% 
+ write.tab(file = "~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/ICM/9.p001_10/exp.up",row.names = T)
+
+
+res[res$baseMean>100,] %>% data.frame() %>% 
+ write.tab(file = "~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/ICM/9.p001_10/exp.un-zero",row.names = T)
+
+dds.temp[,c("NF_ICM_rep1","NF_ICM_rep2")] %>% rowMeans() %>% .[.>100] %>% data.frame %>%
+  write.tab(file = "~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/ICM/9.p001_10/exp.NF.un-zero",row.names = T)
+
+dds.temp[,c("NF_ICM_rep1","NF_ICM_rep2","NT_ICM_rep1","NT_ICM_rep2","NT_ICM_rep3")] %>% rowMeans() %>% .[.>100] %>% data.frame %>%
+  write.tab(file = "~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/ICM/9.p001_10/exp.un-zero",row.names = T)
+
+####20181215 在NF ICM中表达量大于10的
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/ICM/a.SE_pairs_most"
+paste0(wdir,"/all.ep.genes") %>% fread(col.names = c("id","flag")) %>% data.frame() -> genes
+
+temp=log2(dds.temp[row.names(dds.temp) %in% genes$id,c("NF_ICM_rep1","NF_ICM_rep2")]+1) %>% merge(genes,by.x=0,by.y="id")
+rownames(temp) = temp$Row.names
+# temp[which(temp$flag=="NF" &　(temp$NF_ICM_rep1 + temp$NF_ICM_rep2) > 20),2:3] %>%
+# pheatmap(.,cluster_rows = F,cluster_cols = F)
+temp[which(temp$flag=="NF" &　(temp$NF_ICM_rep1 + temp$NF_ICM_rep2) > 10),1,drop=F] %>% 
+  write.tab(paste0(wdir,"/ep.NF.exp.genes"))
+
+temp=log2(dds.temp[row.names(dds.temp) %in% genes$id,c("NT_ICM_rep1","NT_ICM_rep2","NT_ICM_rep3","NT_ICM_rep3")]+1) %>% merge(genes,by.x=0,by.y="id")
+rownames(temp) = temp$Row.names
+# temp[which(temp$flag=="NF" &　(temp$NF_ICM_rep1 + temp$NF_ICM_rep2) > 20),2:3] %>%
+# pheatmap(.,cluster_rows = F,cluster_cols = F)
+temp[which(temp$flag=="NT" &　rowMeans(temp[,c("NT_ICM_rep1","NT_ICM_rep2","NT_ICM_rep3","NT_ICM_rep3")]) > 5),1,drop=F] %>% 
+  write.tab(paste0(wdir,"/ep.NT.exp.genes"))
+
+```
+
+```{r}
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/early_2cell/7.SE_pairs"
+paste0(wdir,"/all.ep.genes") %>% fread(header = F,col.names = c("id","flag")) -> genes
+genes= genes[genes$id %in% rownames(res[which(res$padj <0.05),]),]
+temp=assay(rld) %>% merge(genes,by.x=0,by.y="id")
+# temp$NT_exp=rowMeans(temp[,c("NT_2cell_rep1","NT_2cell_rep2","NT_2cell_rep3")])
+# temp$NF_exp=rowMeans(temp[,c("NF_2cell_rep1","NF_2cell_rep2")])
+temp$NT_exp=rowMeans(temp[,c("nt2_rep1","nt2_rep2")])
+temp$NF_exp=rowMeans(temp[,c("ivf2_rep1","ivf2_rep2")])
+temp = temp[,c("flag","NT_exp","NF_exp")]
+
+temp %>% melt(id.var="flag",value.name="expression") %>% 
+  ggplot(aes(x=flag,y=expression,color=variable)) + geom_violin()
+
+########################
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/ICM/a.SE_pairs_most"
+paste0(wdir,"/chart_NF-ICM-GO-genes.txt.txt") %>% fread(select = c(2,6)) -> go.genes
+go.genes[3,2] %>% str_split_fixed(", ",n=1000) %>% as.vector() -> genes
+go.genes[6,2] %>% str_split_fixed(", ",n=1000) %>% as.vector()%>% c(.,genes) -> genes
+genes=genes[genes!=""]
+assay(rld) %>% data.frame() %>% .[which(toupper(rownames(.)) %in% genes),
+  c("NF_ICM_rep1","NF_ICM_rep2","NT_ICM_rep1","NT_ICM_rep2","NT_ICM_rep3","NT_ICM_rep4")] -> temp
+log2(dds.temp[which(toupper(rownames(dds.temp)) %in% genes),c("NF_ICM_rep1","NF_ICM_rep2","NT_ICM_rep1","NT_ICM_rep2","NT_ICM_rep3","NT_ICM_rep4")]+1) -> temp
+pheatmap(temp,cellwidth = 10,cellheight = 10,filename = paste0(wdir,"/DNA-repair.exp.heatmap.pdf"))
+
+temp$NF.ICM = rowMeans(temp[,c("NF_ICM_rep1","NF_ICM_rep2")])
+temp$NT.ICM = rowMeans(temp[,c("NT_ICM_rep1","NT_ICM_rep2","NT_ICM_rep3","NT_ICM_rep4")])
+wilcox.test(temp$NF.ICM,temp$NT.ICM,paired = T)$p.value -> pvalue
+temp[,c("NF.ICM","NT.ICM")] %>% melt() %>% 
+  ggplot(aes(x=variable,y=value)) + geom_boxplot() + 
+  ggtitle(paste0("DNA-repair,damage/pvalue:",pvalue)) + 
+  theme_bw()
+
+ggsave(paste0(wdir,"/DNA-repair.exp.boxplot.pdf"),width = 3.6,height = 4.2)
+
+
+###################ICM
+paste0(wdir,"/all.ep.genes") %>% fread(header = F,col.names = c("id","flag")) -> genes
+temp=assay(rld) %>% merge(genes,by.x=0,by.y="id")
+temp$NT_exp=rowMeans(temp[,c("NT_ICM_rep1","NT_ICM_rep2","NT_ICM_rep3","NT_ICM_rep4")])
+temp$NF_exp=rowMeans(temp[,c("NF_ICM_rep1","NF_ICM_rep2")])
+temp = temp[,c("flag","NT_exp","NF_exp")]
+
+temp %>% melt(id.var="flag",value.name="expression") %>% 
+  ggplot(aes(x=flag,y=expression,color=variable)) + geom_boxplot() + theme_bw()
+
+```
+
+
+```{r all.ep.genes中both的基因，对应到NT和NF的所有的ep对}
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/8cell/4.p001_10"
+cdata = paste0(wdir,"/both.genes-pairs.distance.tab") %>% fread(col.names = c("type","id","distance"))
+
+#average distance
+
+aggregate(.~type+id,data=cdata,mean) %>% dcast(formula = id~type) ->temp 
+
+ggplot(temp) + geom_point(aes(x=log10(NF),y=log10(NT))) + 
+  #scale_fill_continuous(expand = c(0,0),breaks = c(6.0,7.0)) + 
+  #ggrepel::geom_label_repel(aes(x=log10(NF),y=log10(NT),label=id),data=temp[temp$id %in% sel,]) + 
+  annotation_logticks()  +
+  theme_bw()
+
+write.tab(temp,paste0(wdir,"/both.genes-pairs.avg.distance.tab"),col.names = T)
+sel=c("Jmjd1c","Lta","Sp110","Sp140","Nek2","Ccdc117","Six1","Gm5662","Pde12","Chd1","Rcl1","Lcn9","Bola1","Gm13078","Pramef25","Pramel5","Pms2","Antxr1","Obox3")
+sel = c("Psmd1","Atf6","Zfand3","Umodl1","Pbx2","Slc44a3","Stra6l","Gm13023","C87977","Ccdc158","Ube2s","Cox6a2","BC017158","Trappc5","Zfp90","Tango6")
+
+merge(temp,dds.temp[,c("NF_2cell_rep1","NF_2cell_rep2","NT_2cell_rep1","NT_2cell_rep2","NT_2cell_rep3")],by.x="id",by.y=0)->temp
+temp$log2FC=log2(rowMeans(temp[,c("NF_2cell_rep1","NF_2cell_rep2")]+1)/rowMeans(temp[,c("NT_2cell_rep1","NT_2cell_rep2","NT_2cell_rep3")]+1))
+temp$log2FC = ifelse(temp$log2FC>5,5,ifelse(temp$log2FC< -5,-5,temp$log2FC))
+
+ggplot(temp) + geom_point(aes(x=log10(NF),y=log10(NT),color=log2FC)) + 
+  scale_color_gradientn(colors =jdb_palette("ocean_brick",type = "continuous")) + 
+  #scale_fill_continuous(expand = c(0,0),breaks = c(6.0,7.0)) + 
+  #ggrepel::geom_label_repel(aes(x=log10(NF),y=log10(NT),label=id),data=temp[temp$id %in% sel,]) + 
+  annotation_logticks()  +
+  theme_bw()
+ggsave(paste0(wdir,"/both.genes-pairs.exp.distance.pdf"),width = 4.8,height = 4.8)
+
+dds.temp[sel,c("NF_2cell_rep1","NF_2cell_rep2","NT_2cell_rep1","NT_2cell_rep2","NT_2cell_rep3")]
+
+```
+
+
+```{r 2018年12月18日}
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/ICM/9.p001_10"
+paste0(wdir,"/test3") %>% fread(header = F,col.names = c("id","flag")) -> genes
+  
+temp=assay(rld) %>% merge(genes,by.x=0,by.y="id")
+temp$NT_exp=rowMeans(temp[,c("NT_ICM_rep1","NT_ICM_rep2","NT_ICM_rep3","NT_ICM_rep4")])
+temp$NF_exp=rowMeans(temp[,c("NF_ICM_rep1","NF_ICM_rep2")])
+temp = temp[,c("flag","NT_exp","NF_exp")]
+
+temp %>% melt(id.var="flag",value.name="expression") %>% 
+  ggplot(aes(x=flag,y=expression,color=variable)) + geom_boxplot() + theme_bw()
+
+res <- results(dds,contrast = c("period","NF_ICM","NT_ICM"))
+res[which(res$padj <0.05 & res$log2FoldChange< -1),] %>% data.frame() %>% 
+ write.tab(file = "~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/ICM/9.p001_10/exp.down",row.names = T)
+
+assay(rld) %>% merge(genes,by.x=0,by.y="id")-> temp
+temp=temp[!duplicated(temp$Row.names),]
+rownames(temp) = temp$Row.names
+temp=temp[,c("NF_ICM_rep1","NF_ICM_rep2","NT_ICM_rep1","NT_ICM_rep2","NT_ICM_rep3","NT_ICM_rep4")]
+pheatmap(temp)
+
+
+paste0(wdir,"/test5") %>% fread() %>% data.frame() %>% abs %>% 
+  ggplot(aes(x=log10(V1))) + geom_density() + 
+  annotation_logticks() + 
+  theme_bw()
+
+
+#enhancer----
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/early_2cell/7.SE_pairs"
+wdir="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/ICM/1.SE_pairs"
+paste0(wdir,"/NT-NF.both-enhancer.genes") %>% fread(header = F,col.names = c("SE","gene","flag")) %>% data.frame() ->temp
+library(dplyr)
+group_by(temp,SE,flag) %>% summarise_at(vars(gene), paste, collapse = "/") %>% dcast(SE~flag,fill=NA) -> temp2
+fread("~/workspace/9.NT-ChIP/2.public/a.Renbin/5.homer/1.bed/ES_H3K27ac.super5.bed",
+  drop = 5,col.names = c("chr","start","end","SE","SE.score")) %>% data.frame %>% 
+  merge(temp2,by="SE")  -> temp3
+
+write.tab(temp3,paste0(wdir,"/SE.NT-NF.genes"),col.names = T)
+
+###
+paste0(wdir,"/NT-NF.both-enhancer.genes2") %>% fread(header = F) %>% data.frame() -> temp
+temp$distance = abs(temp$V2+temp$V3-temp$V8-temp$V9)/2000000
+temp[,c(5,11,12)] %>% group_by(V11) %>% summarise_at(vars(distance), mean)
+
+
+```
+
+
+
+```{r k27ac rank peaks}
+wdir="~/workspace/9.NT-ChIP/2.public/a.Renbin/5.homer"
+paste0("cat ",wdir,"/1.bed/ES_H3K27ac.*5.bed") %>% fread() %>% data.frame() -> temp
+#temp$Score = (temp$V6-min(temp$V6))/(max(temp$V6)-min(temp$V6))
+temp$Score = temp$V6
+temp[order(temp$Score),] -> temp
+temp$rank = seq(0,1,length.out=dim(temp)[1])
+
+#tn=19282 #typical enhancer number
+#tn=19414 8cell
+tn=16908 #ES
+
+temp %>% ggplot(aes(x=rank,y=Score)) + geom_line() + 
+  xlim(0,1.05) + 
+  geom_hline(yintercept = temp$Score[tn]) + 
+  theme_bw()
+
+ggsave(paste0(wdir,"/ES.super.rank.pdf"),width = 4.8,height = 4.2)
+```
+
+
+```{r Zscan4d}
+"~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/Zscan4d-peaks.txt" %>% fread() %>% data.frame -> temp
+temp$sample = factor(temp$sample,levels = c("CC","NT-e2","NF-e2","NT-l2","NF-l2","NT-8c","NF-8c"))  
+
+
+###
+c(assay(rld)["Zscan4d",c("nt2_rep1","nt2_rep2","ivf2_rep1","ivf2_rep2")]) %>% 
+  data.frame(sample=c("NT","NT","IVF","IVF"),exp=.)  -> temp
+temp2=aggregate(.~sample,data=temp,mean)
+temp2$sem=aggregate(.~sample,data=temp,function(x) sd(x)/sqrt(length(x)))$exp
+ggplot(temp2) + 
+  #geom_bar(aes(x=sample,y = exp), stat="identity", fill="skyblue", alpha=0.7)+ 
+  theme_bw() + xlab("") + ylab("expression") + ylim(0,12)+
+  geom_errorbar( aes(x=sample, ymin=exp-sem, ymax=exp+sem), width=0.4, colour="orange", alpha=0.9, size=1.3)  
+
+ggsave("~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/Zscan4d-exp.pdf",width=2,height=3.6)
+
+ggplot(temp) + 
+  #geom_bar(aes(x=sample,fill=interaction.frequence,y=-log10(FitHiC.qvalue)),stat = "identity")
+  geom_bar(aes(x=sample,y=interaction.frequence,fill=FitHiC.qvalue),stat = "identity") + theme_bw()
+  geom_count(aes(x=sample,y=interaction.frequence))
+  geom_point(aes(x=sample,y=5,color=FitHiC.qvalue,size=interaction.frequence))
+  
+  
+  
+dds.temp[c("Slc25a16","Tet1","Jmjd1c","Herc4","Lrrtm3","Ctnna3","1700023F02Rik","Mypn","Atoh7"),c("NF_ICM_rep1","NF_ICM_rep2","NT_ICM_rep1","NT_ICM_rep2","NT_ICM_rep3","NT_ICM_rep4")]
+
+
+
+res=results(dds,contrast = c("period","nt2","nt1"))
+res[c("Tet1","Jmjd1c","Herc4","Lrrtm3","Ctnna3","1700023F02Rik"),]
+
+
+dds.temp[c("Snhg1","Slc3a2", "Wdr74", "1700092M07Rik", "Stx5a", "Nxf1", "Tmem223", "Tmem179b", "Taf6l", "Polr2g"),c("NF_ICM_rep1","NF_ICM_rep2","NT_ICM_rep1","NT_ICM_rep2","NT_ICM_rep3","NT_ICM_rep4")]
+
+dds.temp[c("Ndufa9","Akapi"),c("NF_ICM_rep1","NF_ICM_rep2","NT_ICM_rep1","NT_ICM_rep2","NT_ICM_rep3","NT_ICM_rep4")]
+
+
+res.ivf <- results(dds,contrast = c("period","ivf2","ivf1"))
+res.2cell <- results(dds,contrast = c("period","ivf2","nt2"))
+res.nt <- results(dds,contrast = c("period","nt2","nt1"))
+res.2cell[rownames(res.2cell) %in% c("Chst7", "Slc9a7", "Rp2", "Jade3", "Rgn", "Ndufb11", "Rbm10", "Uba1", "Cdk16", "Usp11", "Araf", "Syn1", "Timp1", "Cfp", "Elk1", "Uxt"),] %>% data.frame()
+
+dds.temp[rownames(dds.temp) %in% c("Chst7", "Slc9a7", "Rp2", "Jade3", "Rgn", "Ndufb11", "Rbm10", "Uba1", "Cdk16", "Usp11", "Araf", "Syn1", "Timp1", "Cfp", "Elk1", "Uxt"),c("NF_2cell_rep1","NF_2cell_rep2","NT_2cell_rep1","NT_2cell_rep2","NT_2cell_rep3")]\
+
+dds.temp[rownames(dds.temp) %in% c("Chst7", "Slc9a7", "Rp2", "Jade3", "Rgn", "Ndufb11", "Rbm10", "Uba1", "Cdk16", "Usp11", "Araf", "Syn1", "Timp1", "Cfp", "Elk1", "Uxt"),c("ivf2_rep1","ivf2_rep2","nt2_rep1","nt2_rep2")]
+```
+
+
+
+```{r plot for DAVID web data}
+path="~/workspace/8.NT-HiC/k.fithic/2.xw_100k_20181202/ICM/a.SE_pairs_most"
+david = read.table(paste(path,"chart_NF-ICM-GO-genes.txt.txt",sep = "/"),header = T,sep = "\t")
+
+path="~/workspace/8.NT-HiC/q.FitHiC2/3.e2cell-fithic1.1.1/2.find-SEP"
+david = fread(paste(path,"chart_NF-SE-P.txt",sep = "/"),header = T,sep = "\t")
+
+path="~/workspace/8.NT-HiC/q.FitHiC2/6.downsample-e2cell/b.pass3/1.SE-P"
+david = fread(paste(path,"chart_e2-NF.txt",sep = "/"),header = T,sep = "\t")
+
+david$Term = unlist(lapply(strsplit(as.vector(david$Term),split = "~"),function(x) x[2]))
+david$PValue = -log10(david$PValue)
+david = david[order(david$PValue,decreasing = T),]
+david = david[1:23,]
+david = david[order(david$PValue,decreasing = F),]
+david$Term=factor(david$Term,levels = david$Term)
+
+
+library(RColorBrewer)
+#display.brewer.all()
+ggplot(david) + geom_bar(aes(x = Term, weight = Count, fill = PValue)) + coord_cartesian(expand = F)+ coord_flip() + xlab("") + ylab("gene count") + theme_bw() + theme(axis.text.y = element_text(size = 12),axis.line.x = element_line()) + ylab("gene count") + scale_fill_gradient2(low = "blue",high = "red") + ggtitle("DAVID down-regulate BP")
+
+ggplot(david) + geom_bar(aes(x = Term, weight = PValue,fill=log10(Count))) +
+  #coord_cartesian(expand = F)+ 
+  coord_flip() + xlab("") + ylab("-log10(Pvalue)") + 
+  theme_bw() + theme(axis.text.y = element_text(size = 12),axis.line.x = element_line()) +
+  scale_fill_gradient2(low = "blue",high = "red") +
+  ggtitle("NF-e2cell special expression genes DAVID BP")
+
+ggsave(paste0(path,"/","DAVID-GO.pdf"),width = 12.8,height = 5.4)
+
+
+#######################
+
+
+
+```
+
+```{r gene exp of SE-P in e2cell from new data}
+library(DESeq2)
+load("~/workspace/8.NT-HiC/b.RNA/4.PCA/DESeq2.RData")
+wdir="~/workspace/8.NT-HiC/q.FitHiC2/6.downsample-e2cell/b.pass3/1.SE-P"
+wdir="~/workspace/8.NT-HiC/p.loops/b.FIND/5.e2cell-allchr-iced/6.SE-P"
+
+
+paste0(wdir,"/all.gene.tab") %>% fread(header = F,col.names = c("id","flag")) -> genes
+temp=assay(rld) %>% merge(genes,by.x=0,by.y="id")
+#temp$NT_exp=rowMeans(temp[,c("NT_2cell_rep1","NT_2cell_rep2")])
+#temp$NF_exp=rowMeans(temp[,c("NF_2cell_rep1","NF_2cell_rep2")])
+temp$NT_exp=rowMeans(temp[,c("nt2_rep1","nt2_rep2")])
+temp$NF_exp=rowMeans(temp[,c("ivf2_rep1","ivf2_rep2")])
+temp = temp[,c("flag","NT_exp","NF_exp")]
+
+temp %>% melt(id.var="flag",value.name="expression") %>% 
+  ggplot(aes(x=flag,y=expression,color=variable)) + geom_boxplot() + theme_bw()
+
+
+
+##########
+load("/mnt/guru/home4/qszhu/workspace/9.NT-ChIP/b.RNA/1.DESeq2/DESeq2.RData")
+
+paste0(wdir,"/all.gene.tab") %>% fread(header = F,col.names = c("id","flag")) -> genes
+temp=assay(rld) %>% merge(genes,by.x=0,by.y="id")
+colnames(temp)
+temp$NT_exp=rowMeans(temp[,c("e2cell_RNA_rep1","e2cell_RNA_rep2","e2cell_RNA_rep3")])
+temp$NF_exp=rowMeans(temp[,c("l2cell_RNA_rep1","l2cell_RNA_rep2","l2cell_RNA_rep3")])
+temp = temp[,c("flag","NT_exp","NF_exp")]
+
+temp %>% melt(id.var="flag",value.name="expression") %>% 
+  ggplot(aes(x=flag,y=expression,color=variable)) + geom_boxplot() + theme_bw()
+
+
+```
+

@@ -1,0 +1,204 @@
+---
+title: "correlation_of_compartment"
+author: "zhu"
+date: "2018/10/26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("~/R/library.R")
+
+nt=c("CC", "T-30min", "T-1h", "A-1h", "A-6h", "A-12h", "NT-e2cell", "NT-l2cell", "NT-4cell", "NT-8cell", "NT-Morula", "NT-ICM", "NT-TE")
+```
+
+```{r correlation of correlation matrix }
+wdir="~/workspace/8.NT-HiC/h.homer_ALL/7.except_newHomer_20180705/c.correlation_of_correlation"
+cdata = paste0(wdir,"/all.tab") %>% fread %>% `colnames<-`(nt) %>% data.frame(check.names = F) 
+df.data=cdata[apply(cdata,1,var,na.rm=T)!=0,]
+
+cor.c = cor(df.data,method="pearson")
+
+pheatmap(cor.c,cluster_cols =T ,cluster_rows = T ,border_color = NA  ,show_colnames = T,
+         color= colorRampPalette(c("white","grey","red"))(101),
+    display_numbers =T,clustering_method="single",number_format="%.3f",
+      breaks = seq(0,1,0.01),
+  main = "Correlation_of_correlation_matrix",
+         filename = paste0(wdir,"/corr_pearson_heatmap.pdf"))
+
+data.frame(sample=factor(nt,levels = nt),ICM=cor.c[,"NT-ICM"]) %>% #.[c(-5,-13),] %>% 
+ggplot() + geom_bar(aes(x=sample,weight = ICM),fill = "skyblue") + 
+  ylab("correlation") + 
+  ylim(c(0,1)) + 
+  coord_cartesian(expand = 0) + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 45,hjust = 1))
+ggsave(filename = paste0(wdir,"/corr_with_ICM.pdf"),width=5.6,height=3.6)
+data.frame(sample=factor(nt,levels = nt),ICM=cor.c[,"NT-ICM"]) %>%
+  write.table(file = paste0(odir,"/corr_with_ICM.txt"),quote = F,col.names = F,row.names = F,sep = "\t")
+
+#与CC和ICM的相关性比较，
+data.frame(sample=factor(nt,levels = nt),CC=cor.c[,"CC"],`NT-ICM`=cor.c[,"NT-ICM"],check.names = F)  %>% 
+  melt() %>% ggplot() + geom_bar(aes(x=sample,weight=value,fill=variable),position = "dodge") + 
+  ylab("correlation") + 
+  ylim(c(0,1)) + 
+  coord_cartesian(expand = 0) + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 45,hjust = 1))
+ggsave(filename = paste0(wdir,"/corr_with_NT-ICM_CC.pdf"),width=5.6,height=3.6)
+  
+  
+#与CC和NF-ICM的相关性比较，
+cdata = paste0(wdir,"/all-ICM.tab") %>% fread %>% `colnames<-`(c(nt,"NF-ICM")) %>% data.frame(check.names = F) 
+df.data=cdata[apply(cdata,1,var,na.rm=T)!=0,]
+cor.c = cor(df.data,method="pearson")
+data.frame(sample=factor(nt,levels = nt),CC=cor.c[nt,"CC"],`NT-ICM`=cor.c[nt,"NT-ICM"],check.names = F)  %>% 
+  melt() %>% ggplot() + geom_bar(aes(x=sample,weight=value,fill=variable),position = "dodge") + 
+  ylab("correlation") + 
+  ylim(c(0,1)) + 
+  coord_cartesian(expand = 0) + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 45,hjust = 1))
+ggsave(filename = paste0(wdir,"/corr_with_NT-ICM_CC.pdf"),width=5.6,height=3.6)
+
+nt=c("CC", "T-30min", "A-6h", "A-12h", "NT-e2cell", "NT-l2cell", "NT-4cell", "NT-8cell", "NT-Morula", "NT-ICM")
+data.frame(sample=factor(nt,levels = nt),CC=cor.c[nt,"CC"],`NT-ICM`=cor.c[nt,"NT-ICM"],check.names = F) %>% 
+  melt() %>% ggplot(aes(x=sample,y=value,color=variable)) + geom_point() + geom_line(aes(group=variable)) + 
+  ylab("correlation") + 
+  ylim(c(0,1)) + 
+  coord_cartesian(expand = 0) + 
+  #scale_linetype_manual(values = c(2,1)) + 
+  scale_color_manual(values=c("red2","blue2")) + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 45,hjust = 1))
+ggsave(filename = paste0(wdir,"/corr_with_NT-ICM_CC-line.pdf"),width=5.6,height=3.6)
+```
+
+```{r correlation of PC1}
+wdir="~/workspace/8.NT-HiC/h.homer_ALL/7.except_newHomer_20180705/9.PC1_40-200k"
+#wdir="~/workspace/8.NT-HiC/h.homer_ALL/7.except_newHomer_20180705/2.PC1_300-600k"
+odir="~/workspace/8.NT-HiC/h.homer_ALL/7.except_newHomer_20180705/d.correlation_of_PC1"
+flist=list.files(wdir,"PC1.bedGraph",full.names = T)
+ss=str_split_fixed(flist,"[./]",n=15)[,13]
+ss
+data.pc = read.table(flist[1],sep="\t",skip = 1)
+colnames(data.pc) = c("chr","start","end",ss[1])
+
+for(i in 2:length(flist)){
+  temp = read.table(flist[i],sep = "\t",header = F,skip = 1)
+  colnames(temp) = c("chr","start","end",ss[i])
+  print(length(rownames(temp)))
+  data.pc = merge(data.pc,temp,by = c("chr","start","end"),all=T)
+  print(length(rownames(data.pc)))
+}
+
+pc1 = data.pc[,-3:-1]
+pc1[which(is.na(pc1),arr.ind = TRUE)] = 0.0
+
+temp=c("cc","05h","1h","2h","6h","12h","e2cell","l2cell","4cell","8cell","morula","icm","te")
+df.data = pc1[apply(pc1,1,var,na.rm=T)!=0,]
+df.data = df.data[,temp]
+#df.data = df.data[apply(df.data,1,function(x) any(x!=0)),]
+
+cor.pc = cor(df.data,method = "pearson")
+
+
+pheatmap(cor.pc,cluster_cols =T ,cluster_rows = T ,border_color = NA  ,show_colnames = T,
+         color= colorRampPalette(c("white","grey","red"))(101),
+    display_numbers =T,clustering_method="single",number_format="%.3f",
+      breaks = seq(0,1,0.01),
+  main = "Correlation_of_PC1",
+         filename = paste0(odir,"/corr_pearson_heatmap-300k.pdf"))
+
+data.frame(sample=factor(temp,levels = temp),value=cor.pc[temp,"icm"]) %>% 
+ggplot() + geom_bar(aes(x=sample,weight = value),fill = "skyblue") + 
+  ylab("correlation") + 
+  ylim(c(0,1)) + 
+  coord_cartesian(expand = 0) + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 45,hjust = 1))
+ggsave(filename = paste0(odir,"/corr_with_ICM.pdf"),width=5.6,height=3.6)
+data.frame(sample=factor(temp,levels = temp),value=cor.pc[temp,"icm"]) %>% 
+  write.table(file = paste0(odir,"/corr_with_ICM.txt"),quote = F,col.names = F,row.names = F,sep = "\t")
+
+#与CC和ICM的相关性比较，
+temp=c("cc","05h","6h","12h","e2cell","l2cell","4cell","8cell","morula","icm","te")
+data.frame(sample=factor(temp,levels = temp),CC=cor.pc[temp,"cc"],ICM=cor.pc[temp,"icm"]) %>% 
+  melt() %>% ggplot() + geom_bar(aes(x=sample,weight=value,fill=variable),position = "dodge") + 
+  ylab("correlation") + 
+  ylim(c(0,1)) + 
+  coord_cartesian(expand = 0) + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 45,hjust = 1))
+ggsave(filename = paste0(odir,"/corr_with_ICM_CC2.pdf"),width=5.6,height=3.6)
+
+#与CC和NF-ICM的相关性比较，
+temp = read.table("~/workspace/8.NT-HiC/3.public_data/f.XW_analysis/7.newHomer/9.PC1_40-200k/ICM.PC1.bedGraph",sep = "\t",header = F,skip = 1)
+colnames(temp) = c("chr","start","end","ICM")
+print(length(rownames(temp)))
+data.pc = merge(data.pc,temp,by = c("chr","start","end"),all=T)
+print(length(rownames(data.pc)))
+pc1 = data.pc[,-3:-1]
+pc1[which(is.na(pc1),arr.ind = TRUE)] = 0.0
+temp=c("cc","05h","1h","2h","6h","12h","e2cell","l2cell","4cell","8cell","morula","icm","te","ICM")
+df.data = pc1[apply(pc1,1,var,na.rm=T)!=0,]
+df.data = df.data[,temp]
+cor.pc = cor(df.data,method = "pearson")
+temp=c("cc","05h","6h","12h","e2cell","l2cell","4cell","8cell","morula","icm","te")
+data.frame(sample=factor(temp,levels = temp),CC=cor.pc[temp,"cc"],`NF-ICM`=cor.pc[temp,"ICM"]) %>% 
+  melt() %>% ggplot(aes(x=sample,y=value,color=variable)) + geom_point() + geom_line(aes(group=variable)) +
+  ylab("correlation") + 
+  ylim(c(0.5,1)) + 
+  coord_cartesian(expand = 0) + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 45,hjust = 1))
+ggsave(filename = paste0(odir,"/corr_with_NF-ICM_CC-line.pdf"),width=5.6,height=3.6)
+
+data.frame(sample=factor(temp,levels = temp),CC=cor.pc[temp,"cc"],`NF-ICM`=cor.pc[temp,"ICM"]) -> nt.cordata
+data.frame(sample=factor(temp,levels = temp),CC=cor.pc[temp,"cc"],`NT-ICM`=cor.pc[temp,"icm"]) -> nt.cordata
+```
+
+```{r}
+wdir="~/workspace/8.NT-HiC/3.public_data/f.XW_analysis/7.newHomer/4.PC1_50-200k"
+#wdir="~/workspace/8.NT-HiC/h.homer_ALL/7.except_newHomer_20180705/2.PC1_300-600k"
+odir="~/workspace/8.NT-HiC/h.homer_ALL/7.except_newHomer_20180705/d.correlation_of_PC1"
+flist=list.files(wdir,"PC1.bedGraph",full.names = T)
+ss=str_split_fixed(flist,"[./]",n=18)[,15]
+ss
+data.pc = read.table(flist[1],sep="\t",skip = 1)
+colnames(data.pc) = c("chr","start","end",ss[1])
+
+for(i in 2:length(flist)){
+  temp = read.table(flist[i],sep = "\t",header = F,skip = 1)
+  colnames(temp) = c("chr","start","end",ss[i])
+  print(length(rownames(temp)))
+  data.pc = merge(data.pc,temp,by = c("chr","start","end"),all=T)
+  print(length(rownames(data.pc)))
+}
+
+pc1 = data.pc[,-3:-1]
+pc1[which(is.na(pc1),arr.ind = TRUE)] = 0.0
+
+temp=c("Sperm","MII_oocyte","PN3_zygote","PN5_zygote","early_2cell","late_2cell","4cell","8cell","ICM")
+df.data = pc1[apply(pc1,1,var,na.rm=T)!=0,]
+df.data = df.data[,temp]
+#df.data = df.data[apply(df.data,1,function(x) any(x!=0)),]
+
+cor.pc = cor(df.data,method = "pearson")
+temp=c("Sperm","PN3_zygote","PN5_zygote","early_2cell","late_2cell","4cell","8cell","ICM")
+data.frame(sample=factor(temp,levels = temp),Sperm=cor.pc[temp,"Sperm"],`NF-ICM`=cor.pc[temp,"ICM"]) %>% 
+  melt() %>% ggplot(aes(x=sample,y=value,color=variable)) + geom_point() + geom_line(aes(group=variable)) +
+  ylab("correlation") + 
+  ylim(c(0.5,1)) + 
+  coord_cartesian(expand = 0) + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 45,hjust = 1))
+
+data.frame(sample=factor(temp,levels = temp),Sperm=cor.pc[temp,"Sperm"],`ICM`=cor.pc[temp,"ICM"]) -> nf.cordata
+
+cbind(nt.cordata[c(-2,-9,-11),],nf.cordata[,-1]) %>% melt(id.var="sample") -> temp2
+temp2$type = ifelse(temp2$variable %in% c("Sperm","ICM"),"NF","NT")
+temp2$flag = ifelse(temp2$variable %in% c("Sperm","CC"),"CC","ICM")
+ggplot(temp2[temp2$variable!="Sperm",],aes(x=sample,y=value,color=flag)) + geom_point() + geom_line(aes(group=variable,linetype=type)) +
+  ylab("correlation") + 
+  ylim(c(0.5,1)) + 
+  coord_cartesian(expand = 0) + 
+  scale_linetype_manual(values = c(2,1)) + 
+  scale_color_manual(values=c("red2","blue2")) + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 45,hjust = 1))
+ggsave(filename = paste0(odir,"/corr_NT-NF-all-line3.pdf"),width=5.6,height=3.6)
+
+```
+

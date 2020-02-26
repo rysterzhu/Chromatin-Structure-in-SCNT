@@ -1,0 +1,503 @@
+---
+title: "probability"
+author: "zhu"
+date: "2017/11/27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(reshape2)
+library(ggplot2)
+library(BuenColors)
+res = 10000
+ss=c("cc","05h","1h","2h","6h","12h","e2cell","l2cell","4cell","8cell","morula","icm","te","Ps")
+```
+
+<!--  [1] "cc.1"     "cc.2"     "es100.1"  "es10.1"   "es10.2"   "es200.1"  -->
+<!--  [7] "es500.1"  "es500.2"  "mII_rep1" "mII_rep2" "morula.1" "morula.2" -->
+<!-- [13] "nt1h"     "nt2h"     "xw_rep1"  "xw_rep2" -->
+```{r}
+wdir="~/workspace/8.NT-HiC/a.probability/f.except_raw_20180826"
+
+flist=list.files(path = wdir,pattern="_10000.tab",full.names = T)
+nlist=gsub("_10000.tab","",unlist(lapply(strsplit(flist,"/"),function(x) x[8])))
+nlist
+except=c("3h")
+flist = flist[which(!nlist %in% except)]
+nlist = nlist[which(!nlist %in% except)]
+#l = 3e8/res
+input = data.frame(distance = 1:20000, Ps = (1:20000)^-1)   #1e8/10000 = 10000
+
+for(i in 1:length(flist)){
+  temp.ps = read.table(flist[i],sep = "\t",header = F)
+  colnames(temp.ps) = c("distance",nlist[i])
+  #temp.ps[,2] = temp.ps[,2]/sum(temp.ps[,2])
+  temp.ps[,1] = temp.ps[,1] + 1
+ # temp.ps = temp.ps[which(temp.ps[,1] %in% y),]
+  print(length(rownames(temp.ps)))
+  input = merge(input,temp.ps,by = "distance",all=TRUE)
+  print(length(rownames(input)))
+}
+data.ps = input
+
+data.ps[is.na(data.ps)] = 0.0
+
+data.ps[,1] = data.ps[,1]*res  #convert the unit of distance to bp
+# normalize the total probability to 1
+data.ps[,-1] = apply(data.ps[,-1],2,function(x) x/sum(x))
+#each bin was res multiple
+data.ps[,-1] = data.ps[,-1]/res
+#select range
+data.ps = data.ps[which(data.ps$distance >= 1e5 & data.ps$distance <= 3e8),]
+
+#######for scale_x_log plot
+melt.ps2 = melt(data.ps,id.vars = "distance",variable.name = "Sample") #test
+melt.ps2$Sample = factor(melt.ps2$Sample, levels=ss)
+# convert the probability to log10
+#data.ps = log10(data.ps)
+data.ps$distance = log10(data.ps$distance)
+
+#data.ps$group = round(data.ps$distance, digits = 2)
+step = 0.05                    #set a step for plot point of x   #0.05 is the best
+data.ps$group = round(data.ps$distance/step)
+
+data.ps[which(data.ps == -Inf,arr.ind = T)] = NA
+
+probability=aggregate(.~group,data=data.ps,mean)
+probability$distance = as.numeric(probability$group) * step    #probability un-log
+#heatmap link here
+
+logMatrix = probability[,-1]
+logMatrix[,-1] = log10(logMatrix[,-1])
+
+
+melt.ps = melt(logMatrix,id.vars = "distance",variable.name = "Sample")
+
+melt.ps$Sample = factor(melt.ps$Sample, levels=ss)
+
+CP1 <- c("darkslateblue","hotpink","deeppink","magenta","darkorange","violetred","yellow3","springgreen", "seagreen3","deepskyblue1","deepskyblue3","slateblue","black")
+CPCOLS <- c("#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a", "#b15928", "#a6cee3", "#b2df8a", "#fb9a99", "#fdbf6f", "#cab2d6", "#ffff99","red","blue","black")
+CP2=c('#e41a1c','#377eb8','#4daf4a','#984ea3')
+#melt.ps = melt.ps[which(melt.ps$Sample %in% c("1h","3h","6h","12h")),]
+
+ggplot(data=melt.ps,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size = 1) + 
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") +
+  scale_x_continuous(limits = c(5,8.1))+
+  scale_y_continuous(limits = c(-10,-5.5))+
+  annotation_logticks()  +
+  #pretty_plot() +
+  scale_color_manual(values = as.vector(jdb_color_maps)) + 
+  theme(legend.position = c(.05, .05),legend.justification = c("left", "bottom"),legend.background = element_rect(fill=NA))
+ 
+
+#ggsave(filename = paste0(wdir,"/pca_all.pdf"),width = 6.0,height = 4.8)
+
+melt.ps %>% dcast(.,distance~Sample,value.var = "value") -> temp
+write.table(temp,file = paste0(wdir,"/pca_figs2e.txt"),col.names = T,row.names = F,sep = "\t",quote = F)
+
+
+```
+
+```{r calcu the fit ratio}
+test2=melt.ps[which(melt.ps$distance > 6 & melt.ps$distance < 7),]
+fits <- by(test2, test2$Sample, function(i) coef(lm(value ~ distance, i)))
+data.frame(cols = names(fits), do.call(rbind, fits))
+
+ggplot(input) + geom_point(aes(distance,cc)) + xlim(0,100)
+```
+
+```{r step plot each 2 sample}
+g=list()
+for(i in 1:(length(ss)-2)){
+  temp = melt.ps[which(melt.ps$Sample %in% ss[c(i,i+1)]),]
+  gt = ggplot(data=temp,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size=1) + ggtitle(paste0(ss[i]," to ",ss[i+1])) + 
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") + 
+  scale_x_continuous(limits = c(5,7.8))+
+  scale_y_continuous(limits = c(-9,-5.5))+
+  annotation_logticks()  +
+  scale_color_manual(values = c("red2","blue2")) + theme(legend.position = c(.05, .05),legend.justification = c("left", "bottom"),legend.background = element_rect(fill=NA))
+  g = c(g,list(gt))
+}
+
+#morula to te
+  i=11
+  temp = melt.ps[which(melt.ps$Sample %in% ss[c(i,i+2)]),]
+  gt = ggplot(data=temp,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size=1) + ggtitle(paste0(ss[i]," to ",ss[i+2])) + 
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") + 
+  scale_x_continuous(limits = c(5,7.8))+
+  scale_y_continuous(limits = c(-9,-5.5))+
+  annotation_logticks()  +
+  scale_color_manual(values = c("red2","blue2")) + theme(legend.position = c(.05, .05),legend.justification = c("left", "bottom"),legend.background = element_rect(fill=NA))
+  g = c(g,list(gt))
+  
+ggsave(ggplot2.multiplot(plotlist = g, cols=4),filename = paste0(wdir,"/samples2_10k_step.pdf"),width = 16,height = 12)
+```
+
+```{r log in plot each 2 sample }
+g=list()
+for(i in 1:(length(ss)-3)){
+  temp = melt.ps2[which(melt.ps2$Sample %in% ss[c(i,i+1)]),]
+  gt = ggplot(data=temp,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size=1) + ggtitle(paste0(ss[i]," to ",ss[i+1])) + 
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") + 
+  scale_color_manual(values = c("red2","blue2")) + theme(legend.position = c(.05, .05),legend.justification = c("left", "bottom"),legend.background = element_rect(fill=NA)) + 
+    scale_x_log10(limits = c(1e5,6.14e7), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) + 
+    scale_y_log10(limits= c(1e-9,5e-6),labels = trans_format("log10", math_format(10^.x)), breaks = trans_breaks("log10", function(x) 10^x)) + 
+    annotation_logticks() 
+  g = c(g,list(gt))
+}
+
+#morula to te
+  i=12
+  temp = melt.ps2[which(melt.ps2$Sample %in% ss[c(i,i+2)]),]
+  gt = ggplot(data=temp,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size=1) + ggtitle(paste0(ss[i]," to ",ss[i+2])) + 
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") + 
+    scale_x_log10(limits = c(1e5,6.14e7), breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) + 
+    scale_y_log10(limits= c(1e-9,5e-6),labels = trans_format("log10", math_format(10^.x)), breaks = trans_breaks("log10", function(x) 10^x)) + 
+  scale_color_manual(values = c("red2","blue2")) + theme(legend.position = c(.05, .05),legend.justification = c("left", "bottom"),legend.background = element_rect(fill=NA)) + 
+    annotation_logticks()  
+  g = c(g,list(gt))
+  
+ggsave(ggplot2.multiplot(plotlist = g, cols=4),filename = paste0(wdir,"/samples2_10k_xlog.png"),width = 16,height = 12)
+```
+
+```{r heatmap of ggplot2}
+start=1
+st=probability$group
+for(i in 2:length(st)){
+  if(st[i]-st[i-1] != 1) start=i
+}
+probability$group[-1] - probability$group[-length(probability$group)]
+end = which(round(probability$distance,2) >= 7.8)[1]   #10^8.47=3e8   10^7.8=6.3e7
+print(c(start,end))
+
+
+temp = melt(probability[start:end,-1],id.vars = "distance",variable.name = "sample",value.name = "Probability")
+temp$sample = factor(temp$sample,levels = rev(ss))
+
+ggplot(temp) + geom_tile(aes(distance,sample,fill = log10(Probability))) + 
+  scale_fill_gradientn(colors =jdb_palette("ocean_brick",type = "continuous")) + 
+  theme_bw() + scale_x_continuous(expand = c(0,0),breaks = c(6.0,7.0)) + scale_y_discrete(expand = c(0,0)) + annotation_logticks(sides = "bottom")
+ggsave(paste0(wdir,"/heatmap_PS_ggplot.pdf"),width = 5.6,height = 3.2)
+
+temp2 = probability[start:end,-1]
+temp2[,-1] = as.data.frame(t(apply(temp2[,-1],1,function(x) x/x[1])))
+
+temp2 = melt(temp2,id.vars = "distance",variable.name = "sample",value.name = "ProbabilityFC")
+temp2$sample = factor(temp2$sample,levels = rev(ss))
+
+l1=500*(1-min(temp2$ProbabilityFC))/(max(temp2$ProbabilityFC)-1)
+x1 = c(floor(seq(1,500,length.out = l1)),501:1000)
+
+temp2$log2ProbabilityFC = log2(temp2$ProbabilityFC)
+l2=500*(max(temp2$log2ProbabilityFC)-0)/(0-min(temp2$log2ProbabilityFC))
+x2 = c(1:499,floor(seq(500,1000,length.out = l2)))
+print(c(l1,l2))
+
+ggplot(temp2) + geom_tile(aes(distance,sample,fill = ProbabilityFC)) + 
+  scale_fill_gradientn(colors =jdb_palette("ocean_brick",type = "continuous")[x1]) + 
+  scale_x_continuous(expand = c(0,0),breaks = c(6.0,7.0)) + 
+  scale_y_discrete(expand = c(0,0)) + 
+  annotation_logticks(sides = "bottom") + theme_bw()
+ggsave(paste0(wdir,"/heat_PS_FC.pdf"),width = 5.6,height = 3.2)
+
+ggplot(temp2) + geom_tile(aes(distance,sample,fill = log2ProbabilityFC)) + 
+  scale_fill_gradientn(colors =jdb_palette("ocean_brick",type = "continuous")[x2]) + 
+  scale_x_continuous(expand = c(0,0)) + 
+  scale_y_discrete(expand = c(0,0)) + 
+  annotation_logticks(sides = "bottom") + theme_bw()
+ggsave(paste0(wdir,"/heat_PS_log2FC.pdf"),width = 5.8,height = 3.2)
+```
+
+```{r chenmo}
+######cc-05h-1h
+temp = melt.ps[which(melt.ps$Sample %in% c("cc","05h","1h")),]
+ggplot(data=temp,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size=1) + ggtitle(paste0("cc"," to ","1h")) + 
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") + 
+  scale_color_manual(values = c("red2","purple","blue2")) + theme(legend.position = c(.05, .05),legend.justification = c("left", "bottom"),legend.background = element_rect(fill=NA))
+
+######active 1h-12h
+temp = melt.ps[which(melt.ps$Sample %in% c("2h","3h","6h","12h")),]
+ggplot(data=temp,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size=1) + ggtitle(paste0("Active")) + 
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") + 
+  scale_color_manual(values = c('#ca0020','#f4a582','#92c5de','#0571b0')) + theme(legend.position = c(.05, .05),legend.justification = c("left", "bottom"),legend.background = element_rect(fill=NA))
+
+####### cc 6h
+temp = melt.ps[which(melt.ps$Sample %in% c("cc","6h")),]
+ggplot(data=temp,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size=1) + ggtitle(paste0("CC-6h")) + 
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") + 
+  scale_color_manual(values = c("red2","blue2")) + theme(legend.position = c(.05, .05),legend.justification = c("left", "bottom"),legend.background = element_rect(fill=NA))
+
+####### 1h，12h，e2cell，l2cell，4cell，8cell，morula
+temp = melt.ps[which(melt.ps$Sample %in% c("1h","12h","e2cell","l2cell","4cell","8cell","morula")),]
+ggplot(data=temp,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size=1) + ggtitle(paste0("Acitve")) + 
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") + 
+  scale_color_manual(values = c('#e41a1c','#377eb8','#4daf4a','#984ea3','#ff7f00','#ffff33','#a65628')) + theme(legend.position = c(.05, .05),legend.justification = c("left", "bottom"),legend.background = element_rect(fill=NA)) + scale_y_continuous(limits = c(-12.0,-6.0),breaks = seq(-12,-6,1.0))# + scale_x_continuous(limits = c(4.5,8))
+
+####### 12h，e2cell，l2cell，4cell，8cell，morula
+temp = melt.ps[which(melt.ps$Sample %in% c("12h","e2cell","l2cell","4cell","8cell","morula")),]
+ggplot(data=temp,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size=1) + ggtitle(paste0("Acitve")) + 
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") + 
+  scale_color_manual(values = c('#377eb8','#4daf4a','#984ea3','#ff7f00','#ffff33','#a65628')) + theme(legend.position = c(.05, .05),legend.justification = c("left", "bottom"),legend.background = element_rect(fill=NA)) + scale_y_continuous(limits = c(-12.0,-6.0),breaks = seq(-12,-6,1.0))# + scale_x_continuous(limits = c(4.5,8))
+
+####### 1h
+temp = melt.ps[which(melt.ps$Sample %in% c("1h")),]
+ggplot(data=temp,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size=1) + ggtitle(paste0("1h")) + 
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") + 
+  scale_color_manual(values = c('blue2')) + theme(legend.position = c(.05, .05),legend.justification = c("left", "bottom"),legend.background = element_rect(fill=NA))+ scale_y_continuous(limits = c(-12.0,-6.0),breaks = seq(-12,-6,1.0))# + scale_x_continuous(limits = c(4.5,8))
+
+#ggsave(filename = paste0(wdir,"/20180527-Active2.pdf"),width = 6.0,height = 3.6)
+```
+
+```{r heatmap 20180329}
+#link to up 
+#probability=aggregate(.~group,data=data.ps,mean)
+#probability$distance = as.numeric(probability$group) * step    #probability un-log
+
+#logMatrix = log10(probability[,-1])    #log probability
+start=1
+st=probability$group
+for(i in 2:length(st)){
+  if(st[i]-st[i-1] != 1) start=i
+}
+probability$group[-1] - probability$group[-length(probability$group)]
+#start = which((probability$group[-1] - probability$group[-length(probability$group)]) == 1)[1] #next step minus this is 1
+#for step=0.05, start=6,end=54(58), from 10^5.4=2.5e5 to 10^7.8=6.3e7 (1e8)
+end = which(round(probability$distance,2) >= 8)[1]   #10^8.47=3e8   10^7.8=6.3e7
+heatmap.ps = probability[start:end,ss]    #probability un-log
+
+
+#jdb_palette("ocean_brick",type = "continuous")(100)
+
+h3= t(log(heatmap.ps))  #将probability取log，转置
+h2 = -(h3/h3[,1])                  #将第一列调成一样的亮度
+h4 = apply(heatmap.ps,1,function(x) x/x[length(x)])
+
+pheatmap(h3,cluster_rows = F,cluster_cols = F, border_color = "NA",
+         color = jdb_palette("ocean_brick",type = "continuous"),# colorRampPalette(c("black","#1F1F00","yellow"))(100),
+         filename = paste0(wdir,"/heatmap_raw.png"))
+
+pheatmap(h2,cluster_rows = F,cluster_cols = F, border_color = "NA",
+         color =  jdb_palette("ocean_brick",type = "continuous"),  #forest_yellow #colorRampPalette(c("black","#1F1F00","yellow"))(100),
+         filename = paste0(wdir,"/heatmap_norm.png"))
+
+#change the color palette
+pheatmap(h4,cluster_rows = F,cluster_cols = F, border_color = "NA",
+         color = jdb_palette("ocean_brick",type = "continuous"),
+        #breaks = seq(0,2,length.out = 100),
+        breaks = unique(c(seq(min(h4),1,length.out = 500),seq(1,max(h4),length.out = 501))),
+         filename = paste0(wdir,"/heatmap_ps.png"))
+
+#change the max of FC
+h4[which(h4>2,arr.ind = T)] = 2.0
+pheatmap(h4,cluster_rows = F,cluster_cols = F, border_color = "NA",
+         color = jdb_palette("ocean_brick",type = "continuous"),#colorRampPalette(c("#2790BC","black","yellow"))(1000),
+        breaks = seq(0,2,length.out = 1000),
+        #breaks = unique(c(seq(min(h4),1,length.out = 50),seq(1,max(h4),length.out = 51))),
+         filename = paste0(wdir,"/heatmap_ps_fc.png"))
+
+```
+
+
+```{r 2cell es500}
+flist = c()
+flist[1] = "~/workspace/8.NT-HiC/a.probability/5.norm_for_depth/e2cell_40000_iced.tab"
+flist[2] = "~/workspace/8.NT-HiC/a.probability/5.norm_for_depth/l2cell_40000_iced.tab"
+flist[3] = "~/workspace/8.NT-HiC/a.probability/5.norm_for_depth/es500_40000_iced.tab"
+nlist = c("e2cell","l2cell","es")
+
+
+
+temp = melt(logMatrix,id.vars = "distance",variable.name = "Sample")
+
+#3 ggplot
+ggplot(data=temp,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size=1) +
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") + 
+  scale_color_manual(values = c("hotpink","red2","darkslateblue")) 
+
+#2 ggplot
+ggplot(data=melt.ps,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size=1) +
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") + 
+  scale_color_manual(values = c("hotpink","red2","darkslateblue")) 
+```
+
+```{r}
+#data.ps data.ps2
+#8cell
+s="cc-sperm"
+temp = merge(data.ps[,c("distance","1h","2h")],data.ps2[,c("distance","MII")],by="distance")
+colnames(temp) = c("distance","NT-CC","sperm")
+
+#3 ggplot
+melt.ps = melt(temp,id.vars = "distance",variable.name = "Sample")
+melt.ps$Sample = factor(melt.ps$Sample)
+ggplot(data=melt.ps,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size=1) + ggtitle("nt-ferti")+
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") +
+  scale_color_manual(values = c("pink","red2","blue2"))
+```
+
+```{r heatmap for xw developement}
+wdir="~/workspace/8.NT-HiC/a.probability/3.xw_development_probability"
+#ss=c("cc","05h","1h","2h","6h","e2cell","4cell","8cell","morula")
+res = 100000
+flist=list.files(path = wdir,pattern="iced.tab",full.names = T)
+nlist=gsub("_100000_iced.tab","",unlist(lapply(strsplit(flist,"/"),function(x) x[8])))
+nlist
+
+y = ceiling(10^seq(5.4,8,0.1)/res)  # max(y) > 2000
+y = c(1:15)*0.66
+y= c(y,10*y,100*y)
+data.ps = data.frame(distance = 1:2000, Ps = (1:2000)^-1)
+
+x=c(1)
+for(i in 1:40){
+  x = c(x,max(x) + 1.1^i)
+}
+x
+#x=ceiling(x)
+
+# data.ps = read.table(flist[1],sep = "\t",header = F)
+# colnames(data.ps) = c("distance",nlist[1])
+# data.ps[,2] = data.ps[,2]/sum(data.ps[,2])      #calc the probability of all distance
+#data.ps = data.ps[which(data.ps[,1] %in% y),]
+
+for(i in 1:length(flist)){
+  temp.ps = read.table(flist[i],sep = "\t",header = F)
+  colnames(temp.ps) = c("distance",nlist[i])
+  temp.ps[,1] = temp.ps[,1]+1
+  #temp.ps[,2] = temp.ps[,2]/sum(temp.ps[,2])      #calc the probability of all distance
+  #temp.ps = temp.ps[which(temp.ps[,1] %in% y),]
+  print(length(rownames(temp.ps)))
+  data.ps = merge(data.ps,temp.ps,by = "distance",all=T)
+  print(length(rownames(data.ps)))
+}
+
+data.ps[is.na(data.ps)] = 0.0
+
+# normalize the total probability(all sample and Ps) to sum = 1
+data.ps[,2:length(colnames(data.ps))] = apply(data.ps[,2:length(colnames(data.ps))],2,function(x) x/sum(x))
+heatmap.ps = data.ps[which(data.ps$distance %in% x[2:38]),c("MII","sperm","PN3","PN5","e2cell","l2cell","8cell","ICM","mESC500","Ps")]
+colSums(heatmap.ps)
+data.ps$logDis = log10(data.ps$distance * res)
+
+line.ps = data.ps[,c("logDis","MII","sperm","PN3","PN5","e2cell","l2cell","8cell","ICM","mESC500","Ps")]
+line.ps[,2:10] = apply(line.ps[,2:10],2,function(x) lowess(line.ps$logDis,x))
+line.ps = melt(line.ps,id.vars = "logDis")
+line.ps$value = log10(line.ps$value)
+
+ggplot(data=line.ps,mapping =  aes(x=logDis,y=value,colour = variable
+                                   
+                                   
+                                   
+                                   
+                                   
+                                   )) + 
+  geom_smooth(size = 0.75,se=F) + 
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") + 
+  scale_color_manual(values = c("darkslateblue","hotpink","deeppink","magenta","violetred","springgreen", "seagreen3","deepskyblue1","deepskyblue3","black"))
+ggsave(filename = paste0(wdir,"/line.png"))
+# heatmap.ps = apply(heatmap.ps,2,function(x) x/sum(x))
+# 
+# 
+# temp = data.ps[1:1000,]
+# temp[,2:length(colnames(temp))] = apply(temp[,2:length(colnames(temp))],2,function(x) x/sum(x))
+
+
+
+#rownames(heatmap.ps) = seq(5.4,8,0.1)
+
+h3= t(log10(heatmap.ps/res))      #将probability取log，转置
+h2 = -(h3/h3[,2])                  #将第一列调成一样的亮度
+# h4 = apply(h3,2,function(x) x-x[10])  # divide Ps
+h4 =apply(t(heatmap.ps),2,function(x) x/x[10])
+
+pheatmap(h3,cluster_rows = F,cluster_cols = F, border_color = "NA",
+         color = colorRampPalette(c("black","#1F1F00","yellow"))(100),
+         filename = paste0(wdir,"/heatmap_raw2.png"))
+
+pheatmap(h2,cluster_rows = F,cluster_cols = F, border_color = "NA",
+         color = colorRampPalette(c("black","#1F1F00","yellow"))(100),
+         filename = paste0(wdir,"/heatmap_norm2.png"))
+
+#h4[,1:9] = apply(h4[,1:9],2,function(x) (x-mean(x))/(max(x)-min(x))+1)
+#h4[,1:9] = apply(h4[,1:9],2,function(x) (x-min(x))/(max(x)-min(x))*2)
+h4 =apply(heatmap.ps,1,function(x) x/x[10])
+
+pheatmap(h4,cluster_rows = F,cluster_cols = F, border_color = "NA",
+         color = colorRampPalette(c("#2790BC","black","yellow"))(100),
+         filename = paste0(wdir,"/heatmap_tops2.png"))
+
+```
+
+```{r derivation}
+head(data.ps)
+
+p1=data.ps[1:(length(rownames(data.ps))-1),]
+p2=data.ps[2:length(rownames(data.ps)),]
+
+p3=p2-p1
+
+p4 = p3/p3$distance
+
+p4$distance = (p2$distance + p1$distance)/2
+
+melt.ps = melt(p4,id.vars = "distance",variable.name = "Sample")
+melt.ps$Sample = factor(melt.ps$Sample, levels=ss)
+ggplot(data=melt.ps,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  #geom_smooth(se=F,size = 0.5) + 
+  geom_line() +
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability derivation(log10)") +
+  scale_color_manual(values = c("darkslateblue","#FFC0CB", "#FF8087", "#FF4043", "darkorange","skyblue1","deepskyblue1","deepskyblue3","slateblue","black")) + ylim(-5,0)
+
+ggsave(filename = paste0(wdir,"/probability_derivation2.png"),width = 6.0,height = 3.6)
+```
+
+```{r chrs}
+wdir="~/workspace/8.NT-HiC/a.probability/4.all_except_20180323/chrs"
+ss=c("cc","05h","1h","2h","6h","e2cell","4cell","8cell","morula","Ps")
+res = 40000
+flist=list.files(path = wdir,pattern=".tab",full.names = T)
+#c(1,2,11,12,13,14) nt
+#c(-8:-3) other
+#c()
+nlist=gsub("6h_|.tab","",unlist(lapply(strsplit(flist,"/"),function(x) x[9])))
+nlist
+
+#########
+#same as up
+############
+
+
+probability = as.data.frame(sapply(data.ps[,1:(length(colnames(data.ps))-1)],function(x) tapply(x,data.ps$group,mean,na.rm = T)))
+probability[,1] = as.numeric(rownames(probability)) * step    #probability un-log
+logMatrix = probability[which(probability$chr19 >= 0 ),]
+logMatrix[,-1] = log10(logMatrix[,-1])
+
+
+melt.ps = melt(logMatrix,id.vars = "distance",variable.name = "Sample")
+
+
+
+ggplot(data=melt.ps,mapping =  aes(x=distance,y=value,colour = Sample)) + 
+  geom_line(size = 0.75) + 
+  theme_bw() + xlab("Distance(log10)") + ylab("Probability (log10)") +
+  scale_color_manual(values = c("darkslateblue","deeppink","magenta","springgreen", "deepskyblue1"))
+
+```
+
+
+

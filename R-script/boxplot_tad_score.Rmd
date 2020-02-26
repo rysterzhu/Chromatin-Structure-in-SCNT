@@ -1,0 +1,446 @@
+---
+title: "boxplot_tad_score"
+author: "zhu"
+date: "2018/4/15"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("~/R/library.R")
+ss=c("cc","05h","1h","2h","3h","6h","12h","e2cell","l2cell", "4cell","8cell","morula","icm","te")
+```
+
+```{r consolidation score}
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/a.Consolidation_analysis/6.NF_20180803/1.NF"
+ss=c("CC","Sperm","A-1h","MII-oocyte","A-6h","PN3-zygote", "A-12h","PN5-zygote", "NT-e2cell","NF-e2cell", "NT-l2cell", "NF-l2cell", "NT-4cell", "NF-4cell", "NT-8cell", "NF-8cell", "NT-ICM","NF-ICM")
+nf=c("Sperm", "MII-oocyte", "PN3-zygote", "PN5-zygote", "NF-e2cell", "NF-l2cell", "NF-4cell", "NF-8cell", "NF-ICM")
+nt=c("CC","A-1h","A-6h", "A-12h", "NT-e2cell", "NT-l2cell", "NT-4cell", "NT-8cell", "NT-ICM")
+nn=c("CC-Sperm", "1h-oocyte", "6h-PN3", "12h-PN5", "e2cell", "l2cell", "4cell", "8cell", "ICM")
+
+flist = c(list.files(wdir,pattern = "consolidation.txt",full.names = T))
+nlist = str_split_fixed(flist,"/|_",n=20)[,13]
+nlist
+
+data = read.table(flist[1],header = T,sep = "\t")
+data$sample = nlist[1]
+for(i in 2:length(flist)){
+  temp = read.table(flist[i],header = T,sep = "\t")
+  if(length(rownames(temp)) >0){
+  temp$sample = nlist[i]
+  data = rbind(data,temp)}
+}
+##################################################################
+#每个时间点独立分组一个坐标点
+gdata = data[which(data$ratio != 0.0 & data$ratio != Inf & data$sample %in% ss),c("sample","ratio")]
+gdata$NF = "NT"
+gdata$NF[which(gdata$sample %in% nf)] = "NF"
+#gdata$sample = factor(gdata$sample,levels=ss)
+for(i in 1:9){
+  gdata$sample[which(gdata$sample == nf[i] | gdata$sample == nt[i] )] = nn[i]
+}
+gdata$sample = factor(gdata$sample,levels=nn)
+gdata$NF = factor(gdata$NF,levels=c("NT","NF"))
+ggplot(gdata,aes(sample,ratio,fill=NF)) + geom_boxplot(size = 0.5,outlier.shape = NA,width=0.8) + 
+  scale_fill_manual(values=c("firebrick1","royalblue")) +
+  ylim(0,5.5) + 
+  theme_bw() + 
+  ggtitle("NF ICM TAD 40k") + 
+  #geom_signif(comparisons = list(c("A-1h", "MII-oocyte"), c("A-6h","PN3-zygote")), y_position = 3,test = "t.test",tip_length = 0.005, map_signif_level=F) + 
+  ylab("TAD Consolidataion") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45))
+ggsave(paste0(wdir,"/NF-NT6_consolidation.pdf"),width = 6,height = 4.8)
+
+#########################################################################################
+gdata = data[which(data$ratio != 0.0 & data$ratio != Inf & data$sample %in% ss),c("sample","ratio")]
+gdata$NF = "NT"
+gdata$NF[which(gdata$sample %in% nf)] = "NF"
+gdata$sample = factor(gdata$sample,levels=ss)
+ggplot(gdata,aes(sample,ratio,fill=NF)) + geom_boxplot(size = 0.5,outlier.shape = NA) + 
+  scale_fill_manual(values=c("royalblue", "firebrick1")) +
+  ylim(0,5.5) + theme_bw() + 
+  ggtitle("NF ICM TAD 40k") + 
+  #geom_signif(comparisons = list(c("A-1h", "MII-oocyte"), c("A-6h","PN3-zygote")), y_position = 3,test = "t.test",tip_length = 0.005, map_signif_level=F) + 
+  ylab("Relative TAD intensity") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45))
+ggsave(paste0(wdir,"/NF-NT5_consolidation.pdf"),width = 6,height = 4.8)
+
+save.image("temp.RData")
+```
+
+```{r RTI}
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/a.Consolidation_analysis/6.NF_20180803/1.NF"
+#ss=c("CC", "T-30min", "T-1h", "A-1h", "A-3h", "A-6h", "A-12h", "NT-e2cell", "NT-l2cell", "NT-4cell", "NT-8cell", "NT-Morula", "NT-ICM", "NT-TE", "Sperm", "MII-oocyte", "PN3-zygote", "PN5-zygote", "NF-e2cell", "NF-l2cell", "NF-4cell", "NF-8cell", "NF-ICM")
+ss=c("CC","Sperm","A-1h","MII-oocyte","A-6h","PN3-zygote", "A-12h","PN5-zygote", "NT-e2cell","NF-e2cell", "NT-l2cell", "NF-l2cell", "NT-4cell", "NF-4cell", "NT-8cell", "NF-8cell", "NT-ICM","NF-ICM")
+nf=c("Sperm", "MII-oocyte", "PN3-zygote", "PN5-zygote", "NF-e2cell", "NF-l2cell", "NF-4cell", "NF-8cell", "NF-ICM")
+
+#gs = list()
+
+flist = c(list.files(wdir,pattern = "RTI.txt",full.names = T))
+nlist = str_split_fixed(flist,"/|_",n=20)[,13]
+nlist
+
+data = read.table(flist[1],header = T,sep = "\t")
+data$sample = nlist[1]
+for(i in 2:length(flist)){
+  temp = read.table(flist[i],header = T,sep = "\t")
+  if(length(rownames(temp)) >0){
+  temp$sample = nlist[i]
+  data = rbind(data,temp)}
+}
+
+gdata = data[which(data$RTI != 0.0 & data$RTI != Inf & data$sample %in% ss),c("sample","RTI")]
+
+gdata$NF = "NT"
+gdata$NF[which(gdata$sample %in% nf)] = "NF"
+gdata$sample = factor(gdata$sample,levels=ss)
+ggplot(gdata,aes(sample,RTI,fill=NF)) + geom_boxplot(size = 0.5,outlier.shape = NA) + 
+  scale_fill_manual(values=c("royalblue", "firebrick1")) +
+  ylim(0,3.5) + theme_bw() + 
+  ggtitle("NF ICM TAD 40k") + 
+  #geom_signif(comparisons = list(c("A-1h", "MII-oocyte"), c("A-6h","PN3-zygote")), y_position = 3,test = "t.test",tip_length = 0.005, map_signif_level=F) + 
+  ylab("Relative TAD intensity") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45))
+
+#gs = c(gs,list(g))
+ggsave(paste0(wdir,"/NF-NT5_RTI.pdf"),width = 6,height = 4.8)
+
+dcast(data,chr+start+end~sample,value.var = "RTI") ->temp
+write.table(temp,paste0(wdir,"/NF-NT5_RTI.txt"),col.names = T,row.names = F,sep="\t",quote = F)
+library(FSA)
+kruskal.test(RTI~sample,data = gdata)
+Summarize(RTI~sample,data = gdata)
+#can't install FSA
+save.image("20180817.RData")
+```
+
+```{r each tad sample }
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/a.Consolidation_analysis/4.each_tad_20180613"
+
+flist = c(list.files(wdir,pattern = "_40000_-1.txt",full.names = T))
+nlist = str_split_fixed(flist,"/|_",n=20)[,13]
+nlist
+
+data = read.table(flist[1],header = T,sep = "\t")
+data$sample = nlist[1]
+for(i in 2:length(flist)){
+  temp = read.table(flist[i],header = T,sep = "\t")
+  if(length(rownames(temp)) >0){
+  temp$sample = nlist[i]
+  data = rbind(data,temp)}
+}
+
+
+gdata = data[which(data$RTI > 1.5 & data$RTI != Inf),c("sample","RTI")]
+gdata$sample = factor(gdata$sample,levels=ss)
+ggplot(gdata,aes(sample,RTI)) + geom_boxplot(fill = "skyblue",size = 0.8,outlier.shape = NA) + ylim(0,5) + theme_bw() + ggtitle(paste0("RTI in ",tad," TAD(40kb)")) + geom_signif(comparisons = list(c("12h", "6h"), c("3h","6h")), y_position = 4.6,test = "wilcox.test",tip_length = 0.005, map_signif_level=TRUE) + ylab("Relative TAD intensity") + xlab("")
+
+ggsave(filename = paste0(wdir,"/plots/","all","_RTI.png"),width = 12,height = 9.2)
+```
+
+```{r condense}
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/a.Consolidation_analysis/7.condense_20181015/1.NF"
+ss=c("CC","Sperm","A-1h","MII-oocyte","A-6h","PN3-zygote", "A-12h","PN5-zygote", "NT-e2cell","NF-e2cell", "NT-l2cell", "NF-l2cell", "NT-4cell", "NF-4cell", "NT-8cell", "NF-8cell", "NT-ICM","NF-ICM")
+nf=c("Sperm", "MII-oocyte", "PN3-zygote", "PN5-zygote", "NF-e2cell", "NF-l2cell", "NF-4cell", "NF-8cell", "NF-ICM")
+
+#gs = list()
+
+flist = c(list.files(wdir,pattern = "condense.txt",full.names = T))
+nlist = str_split_fixed(flist,"/|_",n=20)[,13]
+nlist
+
+data = read.table(flist[1],header = T,sep = "\t")
+data$sample = nlist[1]
+for(i in 2:length(flist)){
+  temp = read.table(flist[i],header = T,sep = "\t")
+  if(length(rownames(temp)) >0){
+  temp$sample = nlist[i]
+  data = rbind(data,temp)}
+}
+data = data[data$sample %in% ss,]
+#测试所有tad的长度的分布
+data$length = data$end - data$start
+ggplot(data) + geom_density(aes(log10(length))) +  xlim(4,8)
+median(data$length) #920k
+#600kb
+
+data$NF = ifelse(data$sample %in% nf,"NF","NT")
+data$sample = factor(data$sample,levels=ss)
+
+fdr=920000
+data[data$length >= fdr ,] %>% 
+ggplot(aes(sample,mean,fill=NF)) + geom_boxplot(size = 0.5,outlier.shape = NA) + 
+  scale_fill_manual(values=c("royalblue", "firebrick1")) +
+  ylim(0,7e5) + 
+  theme_bw() + 
+  ggtitle("TAD length > 920k") + 
+  ylab("TAD condense") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45))
+ggsave(paste0(wdir,"/NF-NT_mean(>920k).pdf"),width = 6,height = 4.8)
+
+
+data[data$length < fdr ,] %>% 
+ggplot(aes(sample,mean,fill=NF)) + geom_boxplot(size = 0.5,outlier.shape = NA) + 
+  scale_fill_manual(values=c("royalblue", "firebrick1")) +
+  ylim(0,2e5) + 
+  theme_bw() + 
+  ggtitle("TAD length < 920k") + 
+  ylab("TAD condense") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45))
+ggsave(paste0(wdir,"/NF-NT_mean(<920k).pdf"),width = 6,height = 4.8)
+
+
+data[data$length < 6e5 ,] %>% 
+ggplot(aes(sample,median,fill=NF)) + geom_boxplot(size = 0.5,outlier.shape = NA) + 
+  scale_fill_manual(values=c("royalblue", "firebrick1")) +
+  ylim(0,2e5) + 
+  theme_bw() + 
+  ggtitle("TAD length < 600k") + 
+  ylab("TAD condense(median)") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45))
+ggsave(paste0(wdir,"/NF-NT_median2.pdf"),width = 6,height = 4.8)
+
+
+library(FSA)
+kruskal.test(RTI~sample,data = gdata)
+Summarize(RTI~sample,data = gdata)
+#can't install FSA
+save.image("20180817.RData")
+```
+
+```{r chrX}
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/a.Consolidation_analysis/6.NF_20180803/1.NF"
+ss=c("CC","Sperm","A-1h","MII-oocyte","A-6h","PN3-zygote", "A-12h","PN5-zygote", "NT-e2cell","NF-e2cell", "NT-l2cell", "NF-l2cell", "NT-4cell", "NF-4cell", "NT-8cell", "NF-8cell", "NT-ICM","NF-ICM")
+nf=c("Sperm", "MII-oocyte", "PN3-zygote", "PN5-zygote", "NF-e2cell", "NF-l2cell", "NF-4cell", "NF-8cell", "NF-ICM")
+
+flist = c(list.files(wdir,pattern = "RTI.txt",full.names = T))
+nlist = str_split_fixed(flist,"/|_",n=20)[,13]
+nlist
+
+data = read.table(flist[1],header = T,sep = "\t")
+data$sample = nlist[1]
+for(i in 2:length(flist)){
+  temp = read.table(flist[i],header = T,sep = "\t")
+  if(length(rownames(temp)) >0){
+  temp$sample = nlist[i]
+  data = rbind(data,temp)}
+}
+
+gdata = data[which(data$RTI != 0.0 & data$RTI != Inf & data$sample %in% ss & data$chr != "chrX"),c("sample","RTI")]
+gdata$NF = "NT"
+gdata$NF[which(gdata$sample %in% nf)] = "NF"
+gdata$sample = factor(gdata$sample,levels=ss)
+ggplot(gdata,aes(sample,RTI,fill=NF)) + geom_boxplot(size = 0.5,outlier.shape = NA) + 
+  scale_fill_manual(values=c("royalblue", "firebrick1")) +
+  ylim(0,3.5) + theme_bw() + 
+  ggtitle("NF ICM TAD 40k") + 
+  ylab("Relative TAD intensity") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45))
+ggsave(paste0(wdir,"/chrX_RTI.pdf"),width = 6,height = 4.8)
+write.table(gdata,paste0(wdir,"/chrX.tab"),sep = "\t",col.names = T,row.names = F,quote = F)
+
+```
+
+```{r kdm4d-2cell RTI}
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/a.Consolidation_analysis/9.kdm4d-2cell"
+paste0(wdir,"/all.RTI") %>% fread(header = F,col.names = c("sample","chr","start","end","RTI")) %>% data.frame -> cdata
+
+gdata=cdata[which(cdata$RTI != 0.0 & cdata$RTI != Inf ),c("sample","RTI")]
+gdata$NF = gsub("_rep.*","",gdata$sample)
+
+ggplot(gdata,aes(sample,RTI,fill=NF)) + geom_boxplot(size = 0.5,outlier.shape = NA) + 
+  scale_fill_manual(values=c("royalblue", "firebrick1","skyblue")) +
+  ylim(0,3.5) + theme_bw() + 
+  ggtitle("NF ICM TAD 40k") + 
+  ylab("Relative TAD intensity") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45,hjust=1))
+ggsave(paste0(wdir,"/boxplot-reps.pdf"),height = 3.6,width = 5.4)
+
+#merge-replicates
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/a.Consolidation_analysis/9.kdm4d-2cell/1.merge-rep"
+paste0(wdir,"/all.RTI") %>% fread(header = F,col.names = c("sample","chr","start","end","RTI")) %>% data.frame -> cdata
+
+gdata=cdata[which(cdata$RTI != 0.0 & cdata$RTI != Inf ),c("sample","RTI")]
+gdata$NF = gsub("_rep.*","",gdata$sample)
+
+ggplot(gdata,aes(sample,RTI,fill=NF)) + geom_boxplot(size = 0.5,outlier.shape = NA) + 
+  scale_fill_manual(values=c("royalblue", "firebrick1","skyblue")) +
+  ylim(0,3.5) + theme_bw() + 
+  ggtitle("NF ICM TAD 40k") + 
+  ylab("Relative TAD intensity") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45,hjust=1))
+ggsave(paste0(wdir,"/boxplot-mergereps.pdf"),height = 3.6,width = 5.4)
+
+
+library(FSA)
+data = cdata[order(cdata$sample,cdata$chr,cdata$start),]
+data$sample = factor(data$sample)
+kruskal.test(RTI~sample,data = data)
+Summarize(RTI~sample,data = data)
+PT = dunnTest(RTI~sample,data = data)
+PT$res
+PT$res %>%                         
+write.table(file = paste0(wdir,"/RTI.kruskal.pvalue.txt"),sep = "\t",col.names = T,row.names = F,quote = F)
+data2 = dcast(data,formula = chr + start + end~sample,value.var = "RTI")
+cdata2 = data2[apply(data2,1,function(x) !any(x==Inf | x==0)),]
+
+values=matrix(ncol = 4)
+for(i in c("e2cell","early_2cell","kdm4d-e2cell")){
+  for(j in c("e2cell","early_2cell","kdm4d-e2cell")){
+    for(k in c("two.sided","greater","less")){
+      values=rbind(values,c(i,j,k,wilcox.test(cdata2[,i], cdata2[,j],correct  = T,alternative=k)$p.value))
+    }
+  }
+}
+write.tab(values[-1,],paste0(wdir,"RTI.wilcox.pvalue.txt"))
+
+
+```
+
+```{r a.raw-NF-ICM RTI}
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/a.Consolidation_analysis/a.raw-NF-ICM"
+paste0(wdir,"/all.RTI") %>% fread(header = F,col.names = c("sample","chr","start","end","RTI")) %>% data.frame -> cdata
+gdata=cdata[which(cdata$RTI != 0.0 & cdata$RTI != Inf ),c("sample","RTI")]
+ss=c("CC","Sperm","MII-oocyte","A-6h","PN3-zygote", "A-12h","PN5-zygote", "NT-e2cell","NF-e2cell", "NT-l2cell", "NF-l2cell", "NT-4cell", "NF-4cell", "NT-8cell", "NF-8cell", "NT-ICM","NF-ICM")
+nf=c("Sperm", "MII-oocyte", "PN3-zygote", "PN5-zygote", "NF-e2cell", "NF-l2cell", "NF-4cell", "NF-8cell", "NF-ICM")
+
+gdata$NF = "NT"
+gdata$NF[which(gdata$sample %in% nf)] = "NF"
+gdata$sample = factor(gdata$sample,levels=ss)
+ggplot(gdata,aes(sample,RTI,fill=NF)) + geom_boxplot(size = 0.5,outlier.shape = NA) + 
+  scale_fill_manual(values=c("royalblue", "firebrick1")) +
+  ylim(0,3.5) + theme_bw() + 
+  ggtitle("NF ICM TAD 40k") + 
+  #geom_signif(comparisons = list(c("A-1h", "MII-oocyte"), c("A-6h","PN3-zygote")), y_position = 3,test = "t.test",tip_length = 0.005, map_signif_level=F) + 
+  ylab("Relative TAD intensity") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45))
+
+ggsave(paste0(wdir,"/NF-NT_ICM_RTI.pdf"),width = 6,height = 4.8)
+
+
+library(FSA)
+data = cdata[order(cdata$sample,cdata$chr,cdata$start),]
+data$sample = factor(data$sample)
+kruskal.test(RTI~sample,data = data)
+Summarize(RTI~sample,data = data)
+PT = dunnTest(RTI~sample,data = data)
+PT$res
+PT$res %>%                         
+  write.table(file = paste0(wdir,"/RTI.kruskal.pvalue.txt"),sep = "\t",col.names = T,row.names = F,quote = F)
+data2 = dcast(data,formula = chr + start + end~sample,value.var = "RTI")
+cdata2 = data2[apply(data2,1,function(x) !any(x==Inf | x==0)),]
+
+values=matrix(ncol = 4)
+for(i in c("e2cell","early_2cell","kdm4d-e2cell")){
+  for(j in c("e2cell","early_2cell","kdm4d-e2cell")){
+    for(k in c("two.sided","greater","less")){
+      values=rbind(values,c(i,j,k,wilcox.test(cdata2[,i], cdata2[,j],correct  = T,alternative=k)$p.value))
+    }
+  }
+}
+write.tab(values[-1,],paste0(wdir,"RTI.wilcox.pvalue.txt"))
+
+```
+
+
+```{r b.e2cell-in-CC}
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/a.Consolidation_analysis/b.e2cell-in-CC"
+paste0(wdir,"/all.RTI") %>% fread(header = F,col.names = c("sample","chr","start","end","RTI")) %>% data.frame -> cdata
+gdata=cdata[which(cdata$RTI != 0.0 & cdata$RTI != Inf ),c("sample","RTI")]
+ss=c("cc","e2cell","kdm4d-e2cell","tsa-e2cell","sertoli-e2cell","partheno-e2cell","early_2cell")
+
+gdata$sample = factor(gdata$sample,levels=ss)
+ggplot(gdata,aes(sample,RTI,fill=sample)) + geom_boxplot(size = 0.5,outlier.shape = NA,) + 
+  #scale_fill_manual(values=c("royalblue", "firebrick1")) +
+  ylim(0,3.5) + theme_bw() + 
+  ggtitle("CC TAD 40k") + 
+  #geom_signif(comparisons = list(c("A-1h", "MII-oocyte"), c("A-6h","PN3-zygote")), y_position = 3,test = "t.test",tip_length = 0.005, map_signif_level=F) + 
+  ylab("Relative TAD intensity") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45,hjust=1))
+
+ggsave(paste0(wdir,"/all-2cell_CC_RTI.pdf"),width = 5.2,height = 4.8)
+
+
+library(FSA)
+data = cdata[order(cdata$sample,cdata$chr,cdata$start),]
+data$sample = factor(data$sample)
+kruskal.test(RTI~sample,data = data)
+Summarize(RTI~sample,data = data)
+PT = dunnTest(RTI~sample,data = data)
+PT$res
+PT$res %>%                         
+  write.table(file = paste0(wdir,"/RTI.kruskal.pvalue.txt"),sep = "\t",col.names = T,row.names = F,quote = F)
+data2 = dcast(data,formula = chr + start + end~sample,value.var = "RTI")
+cdata2 = data2[apply(data2,1,function(x) !any(x==Inf | x==0)),]
+
+values=matrix(ncol = 4)
+for(i in c("e2cell","early_2cell","kdm4d-e2cell")){
+  for(j in c("e2cell","early_2cell","kdm4d-e2cell")){
+    for(k in c("two.sided","greater","less")){
+      values=rbind(values,c(i,j,k,wilcox.test(cdata2[,i], cdata2[,j],correct  = T,alternative=k)$p.value))
+    }
+  }
+}
+write.tab(values[-1,],paste0(wdir,"RTI.wilcox.pvalue.txt"))
+```
+
+```{r c.e2cell-reps-in-CC}
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/a.Consolidation_analysis/c.e2cell-reps-in-CC"
+paste0(wdir,"/all.RTI") %>% fread(header = F,col.names = c("sample","chr","start","end","RTI")) %>% data.frame -> cdata
+ss=c("cc_rep1","cc_rep2","cc_rep3","cc_rep4","e2cell_rep3","e2cell_rep4","kdm4d-e2cell_rep1","kdm4d-e2cell_rep2","tsa-e2cell_rep1","tsa-e2cell_rep2","sertoli-e2cell_rep1","sertoli-e2cell_rep2","partheno-e2cell_rep1","partheno-e2cell_rep2","early_2cell_rep4","early_2cell_rep5","early_2cell_rep6")
+
+gdata=cdata[which(cdata$RTI != 0.0 & cdata$RTI != Inf ),c("sample","RTI")]
+gdata$NF = gsub("_rep.*","",gdata$sample)
+gdata$sample = factor(gdata$sample,levels = ss)
+#gdata = gdata[order(match(gdata$sample,ss)),]
+
+ggplot(gdata,aes(sample,RTI,fill=NF)) + geom_boxplot(size = 0.5,outlier.shape = NA) + 
+  #scale_fill_manual(values=c("royalblue", "firebrick1","skyblue")) +
+  ylim(0,3.5) + theme_bw() + 
+  ggtitle("CC TAD 40k") + 
+  ylab("Relative TAD intensity") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45,hjust=1))
+ggsave(paste0(wdir,"/all-e2cell-in-CC-reps.pdf"),height = 4.8,width = 6.4)
+
+#merge-replicates
+wdir="~/workspace/8.NT-HiC/g.DI_ALL/a.Consolidation_analysis/9.kdm4d-2cell/1.merge-rep"
+paste0(wdir,"/all.RTI") %>% fread(header = F,col.names = c("sample","chr","start","end","RTI")) %>% data.frame -> cdata
+
+gdata=cdata[which(cdata$RTI != 0.0 & cdata$RTI != Inf ),c("sample","RTI")]
+gdata$NF = gsub("_rep.*","",gdata$sample)
+
+ggplot(gdata,aes(sample,RTI,fill=NF)) + geom_boxplot(size = 0.5,outlier.shape = NA) + 
+  scale_fill_manual(values=c("royalblue", "firebrick1","skyblue")) +
+  ylim(0,3.5) + theme_bw() + 
+  ggtitle("NF ICM TAD 40k") + 
+  ylab("Relative TAD intensity") + xlab("") + 
+  theme(axis.text.x = element_text(angle = 45,hjust=1))
+ggsave(paste0(wdir,"/boxplot-mergereps.pdf"),height = 3.6,width = 6.4)
+
+
+library(FSA)
+data = cdata[order(cdata$sample,cdata$chr,cdata$start),]
+data$sample = factor(data$sample)
+kruskal.test(RTI~sample,data = data)
+Summarize(RTI~sample,data = data)
+PT = dunnTest(RTI~sample,data = data)
+PT$res
+PT$res %>%                         
+write.table(file = paste0(wdir,"/RTI.kruskal.pvalue.txt"),sep = "\t",col.names = T,row.names = F,quote = F)
+data2 = dcast(data,formula = chr + start + end~sample,value.var = "RTI")
+cdata2 = data2[apply(data2,1,function(x) !any(x==Inf | x==0)),]
+
+values=matrix(ncol = 4)
+for(i in c("e2cell","early_2cell","kdm4d-e2cell")){
+  for(j in c("e2cell","early_2cell","kdm4d-e2cell")){
+    for(k in c("two.sided","greater","less")){
+      values=rbind(values,c(i,j,k,wilcox.test(cdata2[,i], cdata2[,j],correct  = T,alternative=k)$p.value))
+    }
+  }
+}
+write.tab(values[-1,],paste0(wdir,"RTI.wilcox.pvalue.txt"))
+
+
+```

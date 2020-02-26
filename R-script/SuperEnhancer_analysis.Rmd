@@ -1,0 +1,34 @@
+---
+title: "SuperEnhancer_analysis"
+author: "zhu"
+date: "2018/12/28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("~/R/library.R")
+wdir="~/workspace/8.NT-HiC/k.fithic/e.SuperEnhancer_analysis"
+```
+
+```{r}
+paste0(wdir,"/NF-e2cell.counts") %>% fread(col.names = c("SE","SE.bin","target.bin","NF.count")) %>% data.frame -> cdata
+paste0(wdir,"/NT-e2cell.counts") %>% fread(col.names = c("SE","SE.bin","target.bin","NT.count")) %>% 
+  data.frame %>% merge(cdata) -> cdata
+paste0(wdir,"/NF-e2cell.qvalues") %>% fread(col.names = c("SE","SE.bin","target.bin","NF.qvalue")) %>% 
+  data.frame %>% merge(cdata) -> cdata
+paste0(wdir,"/NT-e2cell.qvalues") %>% fread(col.names = c("SE","SE.bin","target.bin","NT.qvalue")) %>% 
+  data.frame %>% merge(cdata) -> cdata
+
+cdata$distance = cdata$target.bin - cdata$SE.bin
+cdata$subtract = cdata$NF.count - cdata$NT.count
+#cdata$log10S = cdata$subtract*5*log10(abs(cdata$distance))
+
+write.tab(cdata,paste0(wdir,"/e2cell.pairs"),col.names = T)
+
+
+dds.temp["Ofd1",]
+```
+
+
+

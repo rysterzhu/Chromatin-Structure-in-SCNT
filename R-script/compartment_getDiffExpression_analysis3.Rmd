@@ -1,0 +1,286 @@
+---
+title: "compartment_getDiffExpression_analysis3"
+author: "zhu"
+date: "2018/7/11"
+output: html_document
+#1. use the CC + NT replicates PC1 bedGraph to annnotatePeaks & getDiffExpression; (compartment_analysis.sh)
+#2. get the regions that have more than 1 significant difference PC1;
+#3. get the PC1 value of merge samples in this regions, and kmeans cluster them;
+#4. use this regions and kmeans cluster to plot heatmap of the PC1 value of merge samples of CC to NT development;
+#5. use c("cc","PN5_zygote","early_2cell","late_2cell","8cell","ICM") to calculate
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+wdir="~/workspace/8.NT-HiC/h.homer_ALL/e.analysis_NT_20180710"
+#load(paste0(wdir,"/KM_0711.RData"))
+
+changeF <- function(x1,x2){
+  y = rep("NOC",length(x1))
+  y[which(x1*x2<0 & x1<0)] = "B2A"
+  y[which(x1*x2<0 & x1>0)] = "A2B"
+  return(factor(y))
+}
+
+changeExp <- function(x1,x2){
+  y=rep(0,length(x1))
+  y[which(x1 < 0.05 & x2 < -1)] = -2
+  y[which(x1 < 0.05 & x2 > 1)] = 2
+  return(y)
+}
+
+```
+
+```{r 2.get significant differnece regions}
+ss=c("cc","6h","12h","early_2cell","late_2cell","8cell","ICM")
+
+xdata = read.delim(paste0("~/workspace/8.NT-HiC/h.homer_ALL/e.analysis_NT_20180710/all_reps","/3.diff.txt"),header = T,check.names = F)
+xdata = xdata[,-19:-5]
+#colnames(xdata)[1:32] = str_split_fixed(colnames(xdata)[1:32],"[ .]",n=2)[,1]
+odata = xdata[,c("Chr","Start","End")]
+rownames(odata) = xdata[,1]
+
+#xdata = xdata[,-grep("12h",colnames(xdata))]
+
+for(i in grep("Difference",colnames(xdata))){
+  diff = colnames(xdata)[i]
+  pvalue = gsub("Difference","adj. p-value",diff)
+  #print(pvalue)
+  change = gsub("Difference","Change",diff)
+  odata[,change]="NOC"
+  odata[which(xdata[,pvalue]<0.05 & xdata[,diff] > 1),change] = "UP"
+  odata[which(xdata[,pvalue]<0.05 & xdata[,diff] < -1),change] = "DOWN"
+}
+
+temp = apply(odata[,grep("Change",colnames(odata))],2,factor)
+temp3 = unclass(summary(temp))
+
+coldata = data.frame(str_split_fixed(colnames(odata),"[ .]",n=5)[,c(1,4)])
+coldata$NOC = apply(odata,2,function(x) length(which(x=="NOC")))
+coldata$UP = apply(odata,2,function(x) length(which(x=="UP")))
+coldata$DOWN = apply(odata,2,function(x) length(which(x=="DOWN")))
+coldata$DIFF = apply(odata,2,function(x) length(which(x!="NOC")))
+
+temp = coldata[-3:-1,]
+temp$X1 = coldata[-3:-1,"X2"]
+temp$X2 = coldata[-3:-1,"X1"]
+temp = rbind(temp,coldata[-3:-1,])
+temp2 = dcast(temp[,c(1,2,6)],X1 ~ X2)
+temp2[which(is.na(temp2),arr.ind = T)] = 0
+#write.table(temp2,paste0(wdir,"/diffCount.txt"),sep = "\t",col.names = T,row.names = F,quote = F)
+
+temp3=odata[,which(coldata$X1 == "cc" | coldata$X2 == "cc")]
+diffBed = odata[apply(temp3,1,function(x) any(x != "NOC")),1:3]
+diffBed = diffBed[which(diffBed$Chr != "chrX"),]  #24047
+#cc with other 19792
+```
+
+```{r 3.kmeans for NT diff regions}
+nfdata = read.csv(paste0(wdir,"/2.txt"),header = T,sep = "\t",check.names = F)
+nfdata = nfdata[,-19:-5]
+colnames(nfdata) = str_split_fixed(colnames(nfdata),"[ .]",n=2)[,1]
+rownames(nfdata) = nfdata$PeakID
+ss2=c("cc","6h","12h","e2cell","l2cell", "4cell","8cell","morula","icm","te")
+nfdata1 = nfdata[rownames(diffBed),ss2]
+
+nfdata1[which(nfdata1 > 2,arr.ind = T)] = 2.0
+nfdata1[which(nfdata1 < -2,arr.ind = T)] = -2.0
+
+km2 <- kmeans(nfdata1,centers = 10,iter.max = 10000,nstart = 50)  #nstart >> 20, make the kmeans stable
+#KM=km  #must no change 
+
+#km2$cluster = factor(km2$cluster,levels = 1:10)
+ann = data.frame(cluster=factor(km2$cluster))
+col=c('#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a')#, '#a6cee4','#1f78b5','#b2df8b','#33a02d','#fb9a98','#e31a1d','#fdbf6a','#ff7f01','#cab2d7','#6a3d9b')
+
+pheatmap(nfdata1[order(km2$cluster),],cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+       annotation_row = ann, #annotation_colors = list( cluster=col),
+         color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F,
+        show_rownames = F,height = 10, width = 3,breaks = seq(-2,2,length.out = 200),
+        filename =paste0(wdir,"/KM20_heatmap/heatmap_NT_ccdiffother.png"))
+
+#KM1_NF-NT_heatmap: c("cc","PN3_zygote","PN5_zygote","early_2cell","late_2cell","8cell","ICM") : c("cc","6h","12h","e2cell","l2cell","8cell","icm")
+#KM2_NF-NT_heatmap: c("cc","PN5_zygote","early_2cell","late_2cell","8cell","ICM") : c("cc","12h","e2cell","l2cell","8cell","icm")
+```
+
+```{r 4.heatmap for NT in kmeans cluster regions}
+ntdata = read.csv("~/workspace/8.NT-HiC/h.homer_ALL/e.analysis_NT_20180710/2.txt",header = T,sep = "\t",check.names = F)
+ntdata = ntdata[,-19:-5]
+colnames(ntdata) = str_split_fixed(colnames(ntdata),"[ .]",n=2)[,1]
+rownames(ntdata) = ntdata$PeakID
+
+ss2=c("cc","05h","1h","2h","3h","6h","12h","e2cell","l2cell", "4cell","8cell","morula","icm","te")
+ss2=c("cc","12h","e2cell","l2cell","8cell","icm")
+ntdata1 = ntdata[rownames(diffBed),ss2]
+
+ntdata1[which(ntdata1 > 2,arr.ind = T)] = 2.0
+ntdata1[which(ntdata1 < -2,arr.ind = T)] = -2.0
+
+pheatmap(ntdata1[order(km2$cluster),],cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+       annotation_row = ann, #annotation_colors = list( cluster=col),
+         color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F,
+        show_rownames = F,height = 10, width = 3,breaks = seq(-2,2,length.out = 200),
+        filename =paste0(wdir,"/KM2_NF-NT_heatmap/heatmap_NT_km10.png"))
+
+
+ntdata2= cbind(nfdata1,ntdata1) #(28139ge)
+km2sort = factor(km2$cluster,levels = c(9,2,1,6,4,8,5,7,10,3))
+ann = data.frame(cluster=factor(km2sort))
+
+pheatmap(ntdata2[order(km2sort),],cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+       annotation_row = ann, 
+         color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F,
+        show_rownames = F,height = 10, width = 3,breaks = seq(-2,2,length.out = 200),
+        filename =paste0(wdir,"/KM2_NF-NT_heatmap/heatmap_NT-NF_km10-sort.png"))
+
+
+```
+
+```{r analysis cluster 8,4,6 (total=10)}
+cl.data = ntdata2[names(km2$cluster[km2$cluster ==6]),]
+cl.data2 = cl.data
+cl.data2[which(cl.data2 > 0,arr.ind = T )] = "A"
+cl.data2[which(cl.data2 != "A",arr.ind = T )] = "B"
+
+
+temp = cl.data2[which(cl.data2$cc == "A" & (cl.data2$`12h` == "A" | cl.data2$e2cell == "A" | cl.data2$l2cell == "A") ),]
+
+temp2 = cl.data[rownames(temp),]
+
+
+temp3 = merge(diffBed,temp2,by = 0)
+write.table(temp3[order(temp3$Chr,temp3$Start),2:4], file = paste0(wdir,"/Cluster6/cc_2cell_A.bed"), sep = "\t",quote = F,row.names = F,col.names = F)
+
+
+
+```
+
+```{r analysis cluster 7,14,17 (total=20)}
+cl.data = ntdata2[names(km2$cluster[km2$cluster ==7]),]
+
+cl.data$PN5.change = changeF(cl.data$PN5_zygote,cl.data$`12h`)
+cl.data$e2.change = changeF(cl.data$early_2cell,cl.data$e2cell)
+cl.data$l2.change = changeF(cl.data$late_2cell,cl.data$l2cell)
+
+summary(cl.data)
+
+
+test = apply(cl.data[,13:14],1,function(x) all(x == "B2A")) #13:15 or 14:15
+test2 = cl.data[which(test),]
+
+
+test3 = merge(diffBed,cl.data,by = 0)
+write.table(test3[order(test3$Chr,test3$Start),2:4], file = paste0(wdir,"/KM20_bed/cluster7-unfilt.bed"), sep = "\t",quote = F,row.names = F,col.names = F)
+
+
+```
+
+
+```{r ZGA genes in heatmap(zhangyi RNA-seq)}
+mm10 = read.csv("~/ann/mm10.gene.bed",sep = "\t",header = F)
+mm10 = mm10[!duplicated(mm10$V4),]
+
+mm10.sel = mm10[which(mm10$V4 %in% rownames(res_frame)[which(res_frame$change == "UP")]),]
+
+write.table(mm10.sel,paste0(wdir,"/mm10.sel.bed"),col.names = F,row.names = F,quote = F,sep = "\t")
+
+temp = cbind(diffBed,rownames(diffBed))
+write.table(temp,paste0(wdir,"/diff.bed"),col.names = F,row.names = F,quote = F,sep = "\t")
+
+#sort -k1V,1 -k2n,2 diff.bed | bedtools intersect -a - -b mm10.sel.bed -r -e -f 0.5 -u > diff2.bed
+temp = read.csv(paste0(wdir,"/diff2.bed"),sep = "\t",header = F)
+
+ntdata.zga = ntdata2 #28139ge
+ntdata.zga$ZGA = NA
+ntdata.zga[which(rownames(ntdata.zga) %in% temp$V4),"ZGA"] = 0.0
+
+pheatmap(ntdata.zga[order(km2$cluster),],cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+       annotation_row = ann, 
+         color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F,
+        show_rownames = F,height = 10, width = 3,breaks = seq(-2,2,length.out = 200),
+        filename =paste0(wdir,"/KM2_NF-NT_heatmap/heatmap_NT-NF_km10-ZGA.png"))
+
+```
+
+```{r ZGA regions in heatmap (zhangyi RRR)}
+#Zhangeyi2.sh
+exp.r = read.csv("~/workspace/8.NT-HiC/b.RNA/2.ZhangYi_analysis/a.identify_RRR_50k/unionbedg.bg",header = T,sep = "\t")
+#the fourth col correspond with the rownames of diffBed ntdata nfdata 
+rownames(exp.r) = exp.r$mm10
+exp.r = exp.r[rownames(diffBed),5:12]  # 28139ge
+
+ntdata.exp = ntdata2   # 28139ge
+
+
+ntdata.exp$ivf1 = rowMeans(exp.r[rownames(ntdata.exp),c("ivf1_rep1","ivf1_rep2")])
+ntdata.exp$ivf2 = rowMeans(exp.r[rownames(ntdata.exp),c("ivf2_rep1","ivf2_rep2")])
+ntdata.exp$nt1 = rowMeans(exp.r[rownames(ntdata.exp),c("nt1_rep1","nt1_rep2")])
+ntdata.exp$nt2 = rowMeans(exp.r[rownames(ntdata.exp),c("nt2_rep1","nt2_rep2")])
+
+
+
+temp = ntdata.exp[,c("ivf1","ivf2","nt1","nt2")]
+temp = log2(temp + 1)
+#test = apply(temp,2,function(x) (x-mean(x))/sd(x))
+#temp = data.frame(t(apply(test,1,function(x) (x-mean(x))/sd(x))))
+temp[which(temp > 5,arr.ind = T)] = 5
+pheatmap(temp[order(km2sort),],cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+       annotation_row = ann, scale = "column",
+         color= colorRampPalette(c("green","black","red2"))(2000),display_numbers =F,
+        show_rownames = F,height = 10, width = 3, 
+        filename =paste0(wdir,"/KM2_NF-NT_heatmap/heatmap_RNA_km10_sort_scaleC2.png"))
+
+
+ntdata.exp$log2FC.ivf = log2((ntdata.exp$ivf2+1)/(ntdata.exp$ivf1+1))
+ntdata.exp$log2FC.nt = log2((ntdata.exp$nt2+1)/(ntdata.exp$nt1+1))
+ntdata.exp$log2FC.1cell = log2((ntdata.exp$nt1+1)/(ntdata.exp$ivf1+1))
+ntdata.exp$log2FC.2cell = log2((ntdata.exp$nt2+1)/(ntdata.exp$ivf2+1))
+temp = ntdata.exp[,c("log2FC.ivf","log2FC.nt","log2FC.1cell","log2FC.2cell")]
+pheatmap(temp[order(km2sort),],cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+       annotation_row = ann, scale = "column",
+         color= colorRampPalette(c("green","black","red2"))(2000),display_numbers =F,
+        show_rownames = F,height = 10, width = 3, 
+        filename =paste0(wdir,"/KM2_NF-NT_heatmap/heatmap_RNA_km10_log2FC.png"))
+
+ntdata.exp$pvalue.ivf = apply(exp.r[,1:4],1,function(x) t.test(x[1:2],x[3:4])$p.value)
+ntdata.exp$pvalue.nt = apply(exp.r[,5:8],1,function(x) t.test(x[1:2],x[3:4])$p.value)
+ntdata.exp$pvalue.1cell = apply(exp.r[,c(1,2,5,6)],1,function(x) t.test(x[1:2],x[3:4])$p.value)
+ntdata.exp$pvalue.2cell = apply(exp.r[,c(3,4,7,8)],1,function(x) t.test(x[1:2],x[3:4])$p.value)
+
+ntdata.exp$change.ivf = changeExp(ntdata.exp$pvalue.ivf,ntdata.exp$log2FC.ivf)
+ntdata.exp$change.nt = changeExp(ntdata.exp$pvalue.nt,ntdata.exp$log2FC.nt)
+ntdata.exp$change.1cell = changeExp(ntdata.exp$pvalue.1cell,ntdata.exp$log2FC.1cell)
+ntdata.exp$change.2cell = changeExp(ntdata.exp$pvalue.2cell,ntdata.exp$log2FC.2cell)
+
+
+temp = ntdata.exp[,c(1:12,25:28)]
+temp[,13:16][which(temp[,13:16] == -2,arr.ind = T)] = 0
+
+pheatmap(temp[order(km2sort),],cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+       annotation_row = ann, 
+         color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F,
+        show_rownames = F,height = 10, width = 5,breaks = seq(-2,2,length.out = 200),
+        filename =paste0(wdir,"/KM2_NF-NT_heatmap/heatmap_NT-NF_km10_up_exp.png"))
+
+
+
+```
+
+```{r gene density in kmeans cluster regions}
+#sort -k1V,1 -k2n,2 ~/ann/mm10.gene.bed | bedtools merge -i - | bedtools intersect -a diff.bed -b - -wao | bedtools merge -i - -c 4,5 -o distinct,sum > diff_gene_density.bed
+
+diff.gene.density = read.delim(paste0(wdir,"/diff_gene_density.bed"),header = F)
+rownames(diff.gene.density) = diff.gene.density$V4
+
+temp = ntdata2
+temp$geneDensity = diff.gene.density[rownames(temp),5]
+temp$geneDensity = (temp$geneDensity - mean(temp$geneDensity))/sd(temp$geneDensity)
+
+pheatmap(temp[order(km2sort),],cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+       annotation_row = ann, 
+         color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F,
+        show_rownames = F,height = 10, width = 3,breaks = seq(-2,2,length.out = 200),
+        filename =paste0(wdir,"/KM2_NF-NT_heatmap/heatmap_gene_density_km10_sort.png"))
+
+```
+

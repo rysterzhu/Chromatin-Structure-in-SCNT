@@ -1,0 +1,199 @@
+---
+title: "compartment_A2B_analysis2"
+author: "zhu"
+date: "2018/7/20"
+output: html_document
+#from the compartment_A2B_analysis2
+#chose the reps that all are same orientation in 1 sample
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+wdir="~/workspace/8.NT-HiC/h.homer_ALL/g.compartment_A2B_analysis_20180719/5.reps"
+
+rep12same = function(test,a,b){
+  c=length(which((test[,a]>0&test[,b]>0)|(test[,a]<=0&test[,b]<=0)))
+  return(c(c,length(test[,a])-c))
+}
+
+allF = function(x1,x2) {
+  x2=as.numeric(x2)
+  all(tapply(x2,x1,function(x) all(x>0)|all(x<=0)))
+}
+
+sf = c("NFpn3","NFpn5","NFe2cell","NFl2cell","NF8cell","NFicm")
+st = c("NT6h","NT12h","NTe2cell","NTl2cell","NT4cell","NT8cell","NTmorula","NTicm","NTte")
+
+st = c("NT6h","NT12h","NTe2cell","NTl2cell","NT8cell","NTicm")
+#save.image(paste0(wdir,"/4.RData"))
+```
+
+```{r read data}
+idata = read.delim(paste0(wdir,"/1.txt"),check.names = F)
+idata = idata[,-19:-5]
+colnames(idata) = str_split_fixed(colnames(idata),"[ .]",n=2)[,1]
+rownames(idata) = idata$PeakID
+idata[which(is.na(idata),arr.ind = T)] = 0
+#idata2 = idata[,c(1:5,10,7,9,6,8,11,13,15,12,14)]
+
+```
+
+```{r filter the un-same orientation reps}
+srep = c("NFpn5_rep1","NFpn5_rep2",
+  "NFe2cell_rep1","NFe2cell_rep2","NFl2cell_rep1","NFl2cell_rep4",
+  "NF8cell_rep1","NF8cell_rep2","NFicm_rep1","NFicm_rep2",
+  "NT12h_rep1","NT12h_rep2",
+  "NTe2cell_rep1","NTe2cell_rep3","NTl2cell_rep1","NTl2cell_rep2",
+  "NT8cell_rep1","NT8cell_rep3","NTicm_rep1","NTicm_rep2")
+
+test = idata[,5:length(colnames(idata))]
+test = idata[,srep]
+x1=factor(str_split_fixed(colnames(test),"_",2)[,1])
+
+#test which sample not has same orientation reps
+test3 = apply(test,1,function(x) tapply(as.numeric(x),x1,function(x) all(x>0)|all(x<=0)))
+test4=as.data.frame(t(test3))      #col:sample, row:regions, T/F has same orientation reps
+length(which(apply(test4,1,all))) #9192 too few  #21114 ok #except 6h pn3 25998
+sel.region = rownames(test4)[which(apply(test4,1,all))]
+
+test5 = data.frame(same=apply(test4,2,function(x) length(which(x))),unsame=apply(test4,2,function(x) length(which(!x))))
+test5$`same%` = test5$same/(test5$same + test5$unsame)
+
+#except 1cell:25225;
+#except 6h&pn3:16944
+#only icm:49500
+#only icm&8cell:41890
+```
+
+```{r }
+#针对各个sample的rep数目不一致的问题，可能导致重复多的sample具有相同方向的regions少
+#每个sample筛选方向相同最多的两个重复使用
+test = idata[,5:length(colnames(idata))]
+test7=test[,x1=="NF8cell"]
+NF8cell = data.frame(
+  X12=rep12same(test7,1,2),X13=rep12same(test7,1,3),X14=rep12same(test7,1,4),X15=rep12same(test7,1,5),X16=rep12same(test7,1,6),
+  X23=rep12same(test7,2,3),X24=rep12same(test7,2,4),X25=rep12same(test7,2,5),X26=rep12same(test7,2,6),
+  X34=rep12same(test7,3,4),X35=rep12same(test7,3,5),X36=rep12same(test7,3,6),
+  X45=rep12same(test7,4,5),X46=rep12same(test7,4,6),
+  X56=rep12same(test7,5,6)) #rep 1 2
+
+test7=test[,x1=="NT6h"]
+NT6h = data.frame(X12=rep12same(test7,1,2),X13=rep12same(test7,1,3),X14=rep12same(test7,1,4),X23=rep12same(test7,2,3),X24=rep12same(test7,2,4),X34=rep12same(test7,3,4)) # rep 3 5
+
+test7=test[,x1=="NT12h"]
+NT12h = data.frame(X12=rep12same(test7,1,2)) # rep 1 2
+
+test7=test[,x1=="NTe2cell"]
+test8 = data.frame(
+  X12=rep12same(test7,1,2),X13=rep12same(test7,1,3),
+  X23=rep12same(test7,2,3)
+  ) #rep 1 3
+
+test7=test[,x1=="NT8cell"]
+test8 = data.frame(
+  X12=rep12same(test7,1,2),X13=rep12same(test7,1,3),
+  X23=rep12same(test7,2,3)
+  ) #rep 1 3
+
+test7=test[,x1=="NFpn3"]
+test8 = data.frame(
+  X12=rep12same(test7,1,2),X13=rep12same(test7,1,3),
+  X23=rep12same(test7,2,3)
+  ) #rep 1 3
+
+test7=test[,x1=="NFl2cell"]
+test8 = data.frame(
+  X12=rep12same(test7,1,2),X13=rep12same(test7,1,3),X14=rep12same(test7,1,4),X15=rep12same(test7,1,5),X16=rep12same(test7,1,6),X17=rep12same(test7,1,7),
+  X23=rep12same(test7,2,3),X24=rep12same(test7,2,4),X25=rep12same(test7,2,5),X26=rep12same(test7,2,6),X27=rep12same(test7,2,7),
+  X34=rep12same(test7,3,4),X35=rep12same(test7,3,5),X36=rep12same(test7,3,6),X37=rep12same(test7,3,7),
+  X45=rep12same(test7,4,5),X46=rep12same(test7,4,6),X47=rep12same(test7,4,7),
+  X56=rep12same(test7,5,6),X57=rep12same(test7,5,7),
+  X67=rep12same(test7,6,7)) #rep 1 2
+
+test7=test[,x1=="NFicm"]
+test8 = data.frame(X12=rep12same(test7,1,2),X13=rep12same(test7,1,3),X14=rep12same(test7,1,4),X23=rep12same(test7,2,3),X24=rep12same(test7,2,4),X34=rep12same(test7,3,4)) # rep 3 5
+
+#最终人工筛选出的两个rep
+srep = c("NFpn3_rep1","NFpn3_rep2","NFpn5_rep1","NFpn5_rep2",
+  "NFe2cell_rep1","NFe2cell_rep2","NFl2cell_rep1","NFl2cell_rep4",
+  "NF8cell_rep1","NF8cell_rep2","NFicm_rep1","NFicm_rep2",
+  "NT6h_rep3","NT6h_rep5","NT12h_rep1","NT12h_rep2",
+  "NTe2cell_rep1","NTe2cell_rep3","NTl2cell_rep1","NTl2cell_rep2",
+  "NT8cell_rep1","NT8cell_rep3","NTicm_rep1","NTicm_rep2")
+
+#21114 ge
+```
+
+
+```{r base on nf}
+nfdata = idata[,sf]
+
+#mark every point to be 1 or 0
+nfdata2=nfdata
+nfdata2[which(nfdata >0,arr.ind =T)] = 1
+nfdata2[which(nfdata <=0,arr.ind =T)] = 0
+#mark every regions to string
+nftype = apply(nfdata2,1,function(x) paste0(x,collapse = ""))
+
+#which to be plot
+#sl = c("10000","01000","00100","00010","00001","01111","10111","11011","11101","11110") #specific 1 sample diff with others
+sl = c("100000","110000","111000","111100","111110","011111","001111","000111","000011","000001") #continue change only once
+temp = nftype[nftype %in% sl]
+
+temp2 = idata[names(temp[order(match(temp,sl))]),c(sf,st)]
+temp2[which(temp2 > 2,arr.ind = T)] = 2.0
+temp2[which(temp2 < -2,arr.ind = T)] = -2.0
+
+ann = data.frame(cluster=factor(temp,levels = sl))
+col=c('#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a')#, '#a6cee4','#1f78b5','#b2df8b','#33a02d','#fb9a98','#e31a1d','#fdbf6a','#ff7f01','#cab2d7','#6a3d9b')
+
+pheatmap(temp2,cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+       annotation_row = ann, #annotation_colors = list( cluster=col),
+         color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F,
+        show_rownames = F,height = 10, width = 3,breaks = seq(-2,2,length.out = 200),
+        filename =paste0(wdir,"/2_continuce_baseNF.png"))
+x=summary(factor(temp))
+```
+
+```{r base on nt}
+nfdata = idata[,st]
+
+#mark every point to be 1 or 0
+nfdata2=nfdata
+nfdata2[which(nfdata >0,arr.ind =T)] = 1
+nfdata2[which(nfdata <=0,arr.ind =T)] = 0
+#mark every regions to string
+nftype = apply(nfdata2,1,function(x) paste0(x,collapse = ""))
+
+#which to be plot
+sl = c("100000","110000","111000","111100","111110","011111","001111","000111","000011","000001") #continue change only once
+sl = c("100000000","110000000","111000000","111100000","111110000","111111000","111111100","111111110",
+  "011111111","001111111","000111111","000011111","000001111","000000111","000000011","000000001") #continue change only once
+temp = nftype[nftype %in% sl]
+
+temp2 = idata[names(temp[order(match(temp,sl))]),c(sf,st)]
+temp2[which(temp2 > 2,arr.ind = T)] = 2.0
+temp2[which(temp2 < -2,arr.ind = T)] = -2.0
+
+ann = data.frame(cluster=factor(temp,levels = sl))
+col=c('#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a', '#a6cee4','#1f78b5','#b2df8b','#33a02d','#fb9a98','#e31a1d')#,'#fdbf6a','#ff7f01','#cab2d7','#6a3d9b')
+
+pheatmap(temp2,cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+       annotation_row = ann, #annotation_colors = list( cluster=col),
+         color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F,
+        show_rownames = F,height = 10, width = 3,breaks = seq(-2,2,length.out = 200),
+        filename =paste0(wdir,"/2_continue_baseNT.png"))
+
+
+###########count the number of regions in clusters
+summary(factor(temp))
+
+test = data.frame(NT=summary(factor(temp)))
+test$type = rownames(test)
+test2=melt(test,variable.name = "cell",value.name = "count",id.vars = "type")
+
+ggplot(test2) + geom_bar(aes(x=type,y=count,fill=cell),position = position_dodge2(),stat = "identity") + theme_bw() + rotate_x_text(angle = 45)
+ggsave(paste0(wdir,"/count.png"),width = 7.2,height = 4.8)
+```
+

@@ -1,0 +1,341 @@
+---
+title: "Gene in compartment"
+author: "zhu"
+date: "2018/10/13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("~/R/library.R")
+nt=c("CC", "T-30min", "T-1h", "A-1h", "A-3h", "A-6h", "A-12h", "NT-e2cell", "NT-l2cell", "NT-4cell", "NT-8cell", "NT-Morula", "NT-ICM", "NT-TE")
+nf=c("Sperm", "MII-oocyte", "PN3-zygote", "PN5-zygote", "NF-e2cell", "NF-l2cell", "NF-4cell", "NF-8cell", "NF-ICM")
+
+sortflag = function(n) {
+  a=c()
+  b=c()
+  for(i in 1:(n-1)){
+    a = c(a,paste0(c(rep(1,i),rep(0,n-i)),collapse = ""))
+    b = c(b,paste0(c(rep(0,i),rep(1,n-i)),collapse = ""))
+  }
+  return(c(a,b))
+}
+
+
+```
+
+```{r 在A/B compartment上的两组基因表达量差异}
+wdir="~/workspace/8.NT-HiC/h.homer_ALL/m.gene_analysis_20181012"
+pc1 = fread(paste0(wdir,"/gene.PC1")) %>% .[,c(-3:-1,-7:-5,-31)] %>% 
+  `colnames<-`(c("Ref",nt,nf)) %>% data.frame(check.names = F)
+
+fl = list.files("~/workspace/8.NT-HiC/b.RNA/1.align/3.Lichong_RNA/3.cufflinksG",
+  pattern = "isoforms.fpkm_tracking",recursive = T,full.names = T) %>% 
+  c(list.files("~/workspace/8.NT-HiC/b.RNA/1.align/4.XieWei_RNA/3.cufflinksG",
+    pattern = "isoforms.fpkm_tracking",recursive = T,full.names = T)) %>%
+  c(list.files("~/workspace/8.NT-HiC/b.RNA/1.align/1.ZhangYi_NT_RNA//3.cufflinksG",
+    pattern = "isoforms.fpkm_tracking",recursive = T,full.names = T))
+
+nl = str_split_fixed(fl,pattern = "cufflinksG/|/isoforms",n=3)[,2] 
+nd = nl %>% str_split_fixed(pattern = "_rep",n=2) %>% data.frame
+
+fpkm = fread(fl[1])[,c(1,10)] %>% `colnames<-`(c("Ref",nl[1]))
+for(i in 2:length(fl)){
+  fpkm = fread(fl[i])[,c(1,10)] %>% `colnames<-`(c("Ref",nl[i])) %>% merge(fpkm,.,by="Ref")
+}
+fpkm = data.frame(fpkm) %>% `rownames<-`(fpkm$Ref) %>% .[,-1]
+
+
+fpkm.mean = apply(fpkm, 1, function(x) tapply(x,factor(nd[,1]),mean))  %>% t %>% data.frame
+
+x=c("NT-e2cell", "NT-l2cell","NT-ICM","NT-TE","PN3-zygote", "PN5-zygote", "NF-e2cell", "NF-l2cell", "NF-4cell", "NF-8cell", "NF-ICM")  #PC compartment value
+y=c("NT_2cell", "NT_2cell","NT_ICM","NT_TE","NF_zygote", "NF_zygote", "NF_2cell", "NF_2cell", "NF_4cell", "NF_8cell", "NF_ICM")  #fpkm expression value
+
+#合并PC和fpkm，根据PC1值确定A/B compartment
+fdr=0.25
+exp.pc = pc1[,c("Ref",x[1])] %>% 
+    merge(.,fpkm.mean[,y[1],drop=F],by.x=1,by.y=0)
+exp.pc[,"compartment"] = ifelse(exp.pc[,2] < -fdr,"B",ifelse(exp.pc[,2]>fdr,"A",NA))
+exp.pc[,"sample"] = x[1]
+exp.pc[,"fpkm"] = exp.pc[,3]
+exp.pc = exp.pc[which(!is.na(exp.pc[,4])),4:6]
+for(i in 1:length(x)){
+  temp = pc1[,c("Ref",x[i])] %>% 
+    merge(.,fpkm.mean[,y[i],drop=F],by.x=1,by.y=0)
+  temp[,"compartment"] = ifelse(temp[,2] < -fdr,"B",ifelse(temp[,2]>fdr,"A",NA))
+  temp[,"sample"] = x[i]
+  temp[,"fpkm"] = temp[,3]
+  exp.pc = temp[which(!is.na(temp[,4])),4:6] %>% rbind(exp.pc,.)
+}
+
+ggplot(exp.pc) + geom_boxplot(aes(x=sample,y=log10(fpkm),color = compartment),outlier.shape = NA) + 
+  ylim(-5,5) + 
+  scale_color_manual(values = c("red2","blue2")) + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 45,hjust=1))
+ggsave(paste0(wdir,"/1.compartment_gene_exp/all.pdf"),width = 5.6,height = 4.2)
+
+```
+
+```{r 基因表达量差异 only NT}
+wdir="~/workspace/8.NT-HiC/h.homer_ALL/m.gene_analysis_20181012"
+pc1 = fread(paste0(wdir,"/gene.PC1")) %>% .[,c(-3:-1,-7:-5,-31)] %>% 
+  `colnames<-`(c("Ref",nt,nf)) %>% data.frame(check.names = F)
+
+fl = list.files("~/workspace/8.NT-HiC/b.RNA/1.align/3.Lichong_RNA/3.cufflinksG",
+  pattern = "isoforms.fpkm_tracking",recursive = T,full.names = T) %>% 
+  c(list.files("~/workspace/8.NT-HiC/b.RNA/1.align/1.ZhangYi_NT_RNA/3.cufflinksG",
+    pattern = "isoforms.fpkm_tracking",recursive = T,full.names = T))
+
+nl = str_split_fixed(fl,pattern = "cufflinksG/|/isoforms",n=3)[,2] 
+nd = nl %>% str_split_fixed(pattern = "_rep",n=2) %>% data.frame
+
+fpkm = fread(fl[1])[,c(1,10)] %>% `colnames<-`(c("Ref",nl[1]))
+for(i in 2:length(fl)){
+  fpkm = fread(fl[i])[,c(1,10)] %>% `colnames<-`(c("Ref",nl[i])) %>% merge(fpkm,.,by="Ref")
+}
+fpkm = data.frame(fpkm) %>% `rownames<-`(fpkm$Ref) %>% .[,-1]
+
+
+fpkm.mean = apply(fpkm, 1, function(x) tapply(x,factor(nd[,1]),mean))  %>% t %>% data.frame
+
+x=c("CC","A-6h","A-12h","NT-e2cell", "NT-l2cell","NT-ICM","NT-TE")  #PC compartment value
+y=c("cc","nt1","nt1","NT_2cell", "NT_2cell","NT_ICM","NT_TE")  #fpkm expression value
+y=c("cc","nt1","nt1","nt2", "nt2","NT_ICM","NT_TE")  #fpkm expression value
+
+#合并PC和fpkm，根据PC1值确定A/B compartment
+fdr=0.25
+exp.pc = pc1[,c("Ref",x[1])] %>% 
+    merge(.,fpkm.mean[,y[1],drop=F],by.x=1,by.y=0)
+exp.pc[,"compartment"] = ifelse(exp.pc[,2] < -fdr,"B",ifelse(exp.pc[,2]>fdr,"A",NA))
+exp.pc[,"sample"] = x[1]
+exp.pc[,"fpkm"] = exp.pc[,3]
+exp.pc = exp.pc[which(!is.na(exp.pc[,4])),4:6]
+for(i in 1:length(x)){
+  temp = pc1[,c("Ref",x[i])] %>% 
+    merge(.,fpkm.mean[,y[i],drop=F],by.x=1,by.y=0)
+  temp[,"compartment"] = ifelse(temp[,2] < -fdr,"B",ifelse(temp[,2]>fdr,"A",NA))
+  temp[,"sample"] = x[i]
+  temp[,"fpkm"] = temp[,3]
+  exp.pc = temp[which(!is.na(temp[,4])),4:6] %>% rbind(exp.pc,.)
+}
+
+exp.pc$sample = factor(exp.pc$sample,levels = x)
+ggplot(exp.pc) + geom_boxplot(aes(x=sample,y=log10(fpkm),color = compartment),outlier.shape = NA) + 
+  ylim(-5,5) + 
+  scale_color_manual(values = c("red2","blue2")) + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 45,hjust=1))
+ggsave(paste0(wdir,"/1.compartment_gene_exp/NT2.pdf"),width = 5.6,height = 4.2)
+
+
+```
+
+```{r A/B compartment gene density}
+wdir="~/workspace/8.NT-HiC/h.homer_ALL/m.gene_analysis_20181012/2.gene_density"
+fl = list.files(wdir,"bg",full.names = T)
+
+pc.density = fread(paste0(wdir,"/all.tab")) %>% data.frame
+pc.density$sample = factor(pc.density$sample,levels = c(nt,nf))
+
+ggplot(pc.density) + geom_boxplot(aes(x=sample,y=density,color = compartment),outlier.shape = NA) + 
+  ylim(0,0.5) + 
+  scale_color_manual(values = c("red2","blue2")) + 
+  ylab("TSS per 1kb") + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 45,hjust=1))
+ggsave(paste0(wdir,"/all.pdf"),width = 5.6,height = 3.6)
+
+pc.density[which(pc.density$sample %in% nt),] %>% 
+ggplot(.) + geom_boxplot(aes(x=sample,y=density,color = compartment),outlier.shape = NA) + 
+  ylim(0,0.5) + 
+  scale_color_manual(values = c("red2","blue2")) + 
+  ylab("TSS per 1kb") + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 45,hjust=1))
+ggsave(paste0(wdir,"/NT.pdf"),width = 5.6,height = 3.6)
+pc.density[which(pc.density$sample %in% nt),] %>% 
+  write.table(file=paste0(wdir,"/NT.tab"),quote = F,col.names = T,row.names = F,sep = "\t")
+```
+
+```{r cluster}
+wdir="~/workspace/8.NT-HiC/h.homer_ALL/m.gene_analysis_20181012"
+pc1 = fread(paste0(wdir,"/gene.PC1"),drop = c(1:3,5:7,31)) %>% 
+  data.frame(check.names = F,row.names = 1) %>% 
+  `colnames<-`(c(nt,nf)) 
+
+nt2=c("CC", "A-12h", "NT-l2cell",  "NT-8cell", "NT-ICM")
+nf2=c("PN5-zygote", "NF-l2cell", "NF-8cell", "NF-ICM")
+
+pc2 = pc1[,c(nt2)]
+#pc2 = pc2[which(apply(pc2, 1, function(x) !all(abs(x)<0.25))),]
+
+pc2[which(pc2 > 2,arr.ind = T)] = 2.0
+pc2[which(pc2 < -2,arr.ind = T)] = -2.0
+
+pc2 = pc2[which(apply(pc2, 1, function(x) !(all(x>0)|all(x<0)) )),] #26%
+
+pc3 = apply(pc2, 2, function(x) ifelse(x>0,1,0)) %>% data.frame(check.names = T) %>% `rownames<-`(rownames(pc2))
+pc3$stat = apply(pc3,1,function(x) paste0(x,collapse = "")) %>% factor
+pc3$stat = summary(pc3$stat) %>% sort(decreasing = T) %>% names %>% factor(pc3$stat,levels = .)
+#
+sel = c("111110","110111","011110","000111","000001","100111","001100")
+pc3 = pc3[which(pc3$stat %in% sel),]
+pc3$stat = factor(pc3$stat,levels = sel)
+
+#pc4 = pc3[order(NT.l2cell,NF.l2cell,NT.8cell,NT.ICM,NF.8cell,NF.ICM,decreasing = T),]
+pc3 = apply(pc2, 2, function(x) ifelse(x>0,1,0)) %>% data.frame(check.names = T) %>% `rownames<-`(rownames(pc2))
+pc3$stat = apply(pc3[,c(3,6)],1,function(x) paste0(x,collapse = "")) %>% factor
+pc3$stat = summary(pc3$stat) %>% sort(decreasing = T) %>% names %>% factor(pc3$stat,levels = .)
+
+#
+km2<- kmeans(pc2,7,iter.max = 10000,nstart = 50) 
+ann = data.frame(cluster=factor(km2$cluster))
+
+
+
+
+ann=data.frame(cluster=pc3$stat,row.names = rownames(pc3))
+#pc2[rownames(pc3),] %>% .[order(pc3$stat),] %>%
+#pc2[order(pc3$stat),] %>% 
+pc2[order(km2$cluster),] %>% 
+#pc1[rownames(pc2)[order(km2$cluster)],c(nt2)] %>% 
+  pheatmap(cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+         annotation_row = ann, #annotation_colors = list( cluster=col),
+           color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F,
+        show_rownames = F,height = 10, width = 3,breaks = seq(-2,2,length.out = 200),
+          filename =paste0(wdir,"/3.clusterNT/heatmap-kmeans-ccnt.jpg"))
+
+
+l=max(summary(factor(km2$cluster)))
+temp = list()
+for(i in 1:7){
+  temp[[paste0("cluster",i)]] = pc2[which(km2$cluster == i),] %>% rownames %>% c(.,rep("",l-length(.)))
+}
+data.frame(temp) %>% write.table(file = paste0(wdir,"/3.clusterNT/gene-kmeans-ccntnf2.txt"),sep = "\t",quote=F,col.names = T,row.names = F)
+
+
+
+l=max(summary(factor(pc3$stat)))
+temp = list()
+for(i in 1:4){
+  temp[[paste0("cluster",i)]] = pc2[which(pc3$stat == levels(pc3$stat)[i]),] %>% rownames %>% c(.,rep("",l-length(.)))
+}
+data.frame(temp) %>% write.table(file = paste0(wdir,"/3.clusterNT/gene-sort3.txt"),sep = "\t",quote=F,col.names = T,row.names = F)
+
+
+```
+
+```{r A2B }
+wdir="~/workspace/8.NT-HiC/h.homer_ALL/m.gene_analysis_20181012"
+pc1 = fread(paste0(wdir,"/gene.PC1"),drop = c(1:3,5:7,31)) %>% 
+  data.frame(check.names = F,row.names = 1) %>% 
+  `colnames<-`(c(nt,nf)) 
+
+nt2=c("CC","A-12h", "NT-e2cell", "NT-l2cell", "NT-8cell", "NT-ICM") 
+nf2=c("PN5-zygote", "NF-e2cell", "NF-l2cell", "NF-8cell", "NF-ICM")
+pc2 = pc1[,nt2]
+#pc2 = pc2[which(apply(pc2, 1, function(x) !all(abs(x)<0.25))),] # not much
+
+pc2[which(pc2 > 2,arr.ind = T)] = 2.0
+pc2[which(pc2 < -2,arr.ind = T)] = -2.0
+length(which(apply(pc2, 1, function(x) all(x>0))))  #26%  | 29%
+length(which(apply(pc2, 1, function(x) all(x<0))))  
+
+pc2 = pc2[which(apply(pc2, 1, function(x) !(all(x>0)|all(x<0)) )),]
+
+pc3 = apply(pc2, 2, function(x) ifelse(x>0,1,0)) %>% data.frame(check.names = T) %>% `rownames<-`(rownames(pc2))
+pc3$stat = apply(pc3,1,function(x) paste0(x,collapse = "")) %>% factor
+t=sortflag(length(nt2))
+pc3 = pc3[which(pc3$stat %in% t),]
+#length(rownames(pc3))/length(rownames(pc2))  #40% of pc2  | 60%
+#length(rownames(pc3))/length(rownames(pc1))  #10% | 19%
+pc3$stat = factor(pc3$stat,levels = t)
+summary(pc3$stat)
+length(rownames(pc3)[pc3$stat %in% t[1:4]])
+length(rownames(pc3)[pc3$stat %in% t[5:8]])
+
+#4cell to 8cell too fewer
+
+ann=data.frame(cluster=pc3$stat,row.names = rownames(pc3))
+pc2[rownames(pc3),] %>% .[order(pc3$stat),] %>% 
+  pheatmap(cluster_rows = F ,border_color = NA  ,cluster_cols = F,
+         annotation_row = ann, #annotation_colors = list( cluster=col),
+           color= colorRampPalette(c("deepskyblue","black","yellow"))(200),display_numbers =F,
+        show_rownames = F,height = 10, width = 3,breaks = seq(-2,2,length.out = 200),
+          filename =paste0(wdir,"/4.A2B/nt5.jpg"))
+#nt1 nf1: 6h,12h,e2,l2,8cell,icm
+#nt2,nf2: 12h,e2,l2,8cell,icm
+#nt3,nf3: 6h,e2,l2,8cell,icm
+#nt4,nf5: 12h,e2,l2,8cell,icm
+#nt5: CC,12h,e2,l2,8cell,icm
+
+l=max(summary(factor(pc3$stat)))
+temp = list()
+for(i in 1:length(levels(pc3$stat))){
+  temp[[paste0("cluster",i)]] = pc3[which(pc3$stat == levels(pc3$stat)[i]),] %>% rownames %>% c(.,rep("",l-length(.)))
+}
+temp2 = data.frame(temp) 
+write.table(temp2,file = paste0(wdir,"/4.A2B/nt5.txt"),sep = "\t",quote=F,col.names = T,row.names = F)
+
+
+#check the overlap of nt nf
+nfpc3=pc3 #3134 | 4757
+ntpc3=pc3 #2668 | 2728
+
+for(i in 1:length(t)){
+  a=rownames(nfpc3)[nfpc3$stat == t[i]]
+  b=rownames(ntpc3)
+  
+  (length(which(duplicated(c(a,b))))/min(length(a),length(b))) %>% as.character %>% message
+}
+
+a=rownames(nfpc3)[nfpc3$stat %in% t[1:4]]   #46% -- 31%  | 51% -- 48%
+b=rownames(ntpc3)[ntpc3$stat %in% t[1:4]]
+(length(which(duplicated(c(a,b))))/min(length(a),length(b))) %>% as.character %>% message
+
+a=rownames(nfpc3) 
+b=rownames(ntpc3) #41% | 52%
+(length(which(duplicated(c(a,b))))/mean(length(a),length(b))) %>% as.character %>% message
+
+a=paste0(rownames(nfpc3),nfpc3$stat)
+b=paste0(rownames(ntpc3),ntpc3$stat) # | 24%
+(length(which(duplicated(c(a,b))))/min(length(a),length(b))) %>% as.character %>% message
+
+
+
+
+
+```
+
+```{r HM density in compartment}
+wdir="~/workspace/8.NT-HiC/h.homer_ALL/m.gene_analysis_20181012/5.HM_in_compartment"
+flist = list.files(wdir,".tab",full.names = T)
+nlist = str_split_fixed(flist,"[/.]",n=20)[,13:14]
+
+cdata = data.frame()
+for(i in 1:length(flist)){
+  fread(flist[i],select = c(4,8),col.names = c("PC1","RPKM")) %>% data.frame -> temp 
+  temp$sample = nlist[i,1]
+  temp$histone = nlist[i,2]
+  cdata = rbind(cdata,temp)
+}
+cdata$compartment = ifelse(cdata$PC1>0,"A","B")
+
+cdata[cdata$histone=="K4me3",] %>%
+ggplot() + geom_boxplot(aes(x=sample,y=RPKM,fill=compartment),outlier.shape = NA) + 
+  ylim(0,5) + 
+  theme_bw()
+ggsave(paste0(wdir,"/K4me3_in_compartment.boxplot.pdf"),width=5.6,height=4.2)
+cdata[cdata$histone=="K27me3",] %>%
+ggplot() + geom_boxplot(aes(x=sample,y=RPKM,fill=compartment),outlier.shape = NA) + 
+  ylim(0,5) + 
+  theme_bw()
+ggsave(paste0(wdir,"/K27me3_in_compartment.boxplot.pdf"),width=5.6,height=4.2)
+
+
+write.tab(cdata,file=paste0(wdir,"/histone_in_compartment.txt"),col.names = T)
+
+
+```
+
